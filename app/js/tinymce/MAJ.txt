@@ -1,0 +1,7 @@
+Mise à jour TinyMCE V4.3.2
+
+- telecharger la version "full package" (pas la jQuery) : http://archive.tinymce.com/download/custom_package.php#?package=full
+- telecharger les traductions :  "English (United Kingdom)"  "French (France)"  "Portuguese (Portugal)"  "Spanish"
+- remplacer dans la traduction francaise :
+	- "Taille de police" par "Taille police"
+	- "Source" par "Source / Adresse web"

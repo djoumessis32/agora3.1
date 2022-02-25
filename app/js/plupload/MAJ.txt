@@ -1,0 +1,6 @@
+Mise à jour PlUpload V2.1.8
+
+- suppr les fichiers inutiles
+- remplacer dans la traduction francaise :
+	- "Ajouter des fichiers" par "SELECTIONNER LES FICHIERS"
+	- "Sélectionnez les fichiers" par "SELECTIONNER LES FICHIERS"

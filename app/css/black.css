@@ -1,0 +1,43 @@
+/**SKIN NOIR**/
+
+/*Basic*/
+body, a, .sLink			{color:#ddd;}
+a:hover, .sLink:hover	{color:#c55;}
+a:active, .sLinkSelect	{color:#d55;}
+
+/*Header*/
+.headerBarLeft			{background-image:url(../img/headerLeftB.png);}
+#headerBarCenter		{background-image:url(../img/headerCenterB.png);}
+#headerBarRight			{background-image:url(../img/headerRightB.png);}
+.headerMainMenuLogo		{background-image:url(../img/logoMainB.png);}
+
+/*Blocs & Blocks d'objets*/
+.sBlock, .sBlockSelect	{border-radius:3px; box-shadow:4px 4px 6px #444;}
+form:not(.mainPageForm) .sBlock	{border-radius:3px; box-shadow:none; background:#000;}/*pas de box-shadow sur les blocks des formulaires, sauf si "mainPageForm" précisé (exple : formulaire du module Mail)*/
+.sBlock, .fancybox-skin	{background:linear-gradient(135deg,#444,#000 100px); background-color:#000; background-repeat:no-repeat;}/*".fancybox-skin" : Surcharge "jquery.fancybox.css"*/
+.sBlockSelect			{background:#444;}
+.objDBlock:hover		{box-shadow:0px 2px 6px 3px #bbb;}
+.objDBlock.sBlockSelect	{box-shadow:0px 2px 6px 3px #900;}
+.objDBlockCenter .hasThumb .objLabelMain	{background:rgba(0,0,0,0.8);}
+.objDBlockCenter .thumbPdf .objLabelMain	{background:rgba(0,0,0,1);}
+.objDLine				{border:solid 1px #444; border-top:solid 1px #555; border-left:0px;}
+.objDLine:hover			{background:#444; background-image:none;}
+.objDLine.sBlockSelect	{box-shadow:inset 0px 0px 30px 4px #555;}
+
+/*Droits d'accès d'utilisateurs*/
+.sAccessRead			{color:#9bf;}
+.sAccessWriteLimit		{color:#d50;}
+.sAccessWrite			{color:#d55;}
+.sAccessDefault			{color:#ccc;}
+
+/*Fieldsets & Options*/
+fieldset, .fieldsetLabel	{border:#555 solid 1px;}
+.sFieldsetOptionUnselect	{border:#777 solid 1px; background:#222; color:#aaa;}
+.sFieldsetOptionUnselect:hover,	.sFieldsetOptionSelect, .fieldsetOption	{border:#555 solid 1px; background:linear-gradient(180deg,#222,#000,#000); background-color:#000;}
+
+/*Divers*/
+.sTableRow:hover, .sTableRowSelect	{background:#1c1c1c;}
+.menuContext			{border:#555 solid 1px;}
+.loadingImg				{background-image:url(../img/loadingB.gif);}
+#sortableModules .ui-state-default	{background:linear-gradient(180deg,#333,#000 50px); background-color:#000;}
+.fancybox-skin			{color:#ddd;}

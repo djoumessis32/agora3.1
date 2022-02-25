@@ -1,0 +1,1 @@
+enlever du CSS les paddings de 18px des headers et footers

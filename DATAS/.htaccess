@@ -1,0 +1,5 @@
+Deny from all
+
+<Files ~ '(?i:thumb\.jpg|thumb\.png|thumb\.gif|.mp4|.webm|.ogg|.mkv|.flv)$'>
+Allow from all
+</Files>
