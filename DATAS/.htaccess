@@ -1,5 +1,5 @@
-Deny from all
+order allow,deny 
 
-<Files ~ '(?i:thumb\.jpg|thumb\.png|thumb\.gif|.mp4|.webm|.ogg|.mkv|.flv)$'>
-Allow from all
-</Files>
+ <Files ~ '\.(?i:jpg|jpeg|png|gif|mp3|mp4|webm|flv)$'> 
+ allow from all 
+ </Files>

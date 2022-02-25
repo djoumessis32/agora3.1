@@ -1,111 +1,113 @@
-<div class="lightboxTitle"><?= Txt::trad("rechercher_espace") ?></div>
+<script>
+////	Resize
+lightboxSetWidth(650);
 
-<script type="text/javascript">
-////	Resize et sé"lection par défaut du champ de recherche
-lightboxWidth(600);
+////	INIT
 $(function(){
-	$("[name='searchText']").focus();
+	//Focus du champ (pas en responsive pour ne pas afficher le clavier virtuel)
+	if(!isMobile())  {$("[name='searchText']").focus();}
 });
-
 
 ////	Contrôle du formulaire
 function formControl()
 {
-	if($("[name=searchText]").val().length<3){
-		displayNotif("<?= Txt::trad("preciser_text") ?>");
-		return false;
-	}
+	//champ de recherche
+	if($("[name=searchText]").val().length<3)
+		{notify("<?= Txt::trad("searchSpecifyText") ?>");  return false;}
+	//Recherche avancée
+	if($("[name=advancedSearch]").val()==1 && ($("input[name='searchModules[]']:checked").isEmpty() || $("input[name='searchFields[]']:checked").isEmpty()))
+		{notify("<?= Txt::trad("fillAllFields") ?>");  return false;}
 }
 
 ////	Recherche avancée
 function displayAdvancedSearch()
 {
-	$(".vDivAdvancedSearch").toggle(200);
+	$(".advancedSearchBlock").toggle();
 	if($("[name=advancedSearch]").val()==1)	{$("[name=advancedSearch]").val(0);}
 	else									{$("[name=advancedSearch]").val(1);}
 }
 </script>
 
 <style>
-.vSearchMainField			{padding:10px;}
-.vSearchTab					{display:table; padding:10px;}
-.vSearchTabLeft				{display:table-cell; width:110px;}
-.vSearchTablRight			{display:table-cell;}
-.vSearchText				{width:220px; margin-right:5px;}
-.vAdvancedSearchLabel		{margin-left:20px;}
-.vDivAdvancedSearch			{display:<?= Req::getParam("advancedSearch")?"block":"none" ?>;}
-.vDivModules,.vDivFields	{display:inline-block; width:32%; float:left; font-size:95%;}
-.vSearchWordResult			{color:#900; text-decoration:underline;}
+input[name="searchText"]	{width:220px; margin-right:5px;}
+#advancedSearchLabel		{margin-left:30px; line-height:30px;}
+.advancedSearchBlock		{display:<?= Req::getParam("advancedSearch")?"block":"none" ?>;}
+.vAdvancedSearchTab			{display:table; margin-top:15px;}
+.vAdvancedSearchTab>div		{display:table-cell;}
+.vAdvancedSearchTab>div:first-child	{width:110px;}
+.vAdvancedSearchOption		{display:inline-block; width:32%; float:left; padding:3px;}
+.vModuleLabel				{text-align:center; padding-top:20px;}
+.vModuleLabel img			{max-height:28px; margin-right:8px;}
+.menuLine					{padding:5px;}
+.vSearchResultWord			{color:#900; text-decoration:underline;}
+
+/*RESPONSIVE FANCYBOX (440px)*/
+@media screen and (max-width:440px){	
+	input[name="searchText"]	{width:150px; margin-right:5px;}
+	#advancedSearchLabel		{display:block; margin-top:15px;}
+	.vAdvancedSearchOption		{width:48%;}
+}
 </style>
 
-<form action="index.php" method="post" OnSubmit="return formControl()">
 
-	<div class="vSearchMainField">
+<form action="index.php" method="post" OnSubmit="return formControl()" class="lightboxContent noConfirmClose">
+	<div class="lightboxTitle"><?= Txt::trad("searchOnSpace") ?></div>
+
+	<div id="searchMainField">
 		<?= Txt::trad("keywords") ?>
-		<input type="text" name="searchText" class="vSearchText" value="<?= Req::getParam("searchText") ?>">
-		<?= Txt::formValidate("rechercher",false) ?>
-		<label onclick="displayAdvancedSearch();" class="vAdvancedSearchLabel noSelect sLink"><?= Txt::trad("recherche_avancee") ?> <img src="app/img/plusSmall.png"></label>
+		<input type="text" name="searchText" value="<?= isset($_SESSION["searchText"]) ? $_SESSION["searchText"] : null ?>">
+		<?= Txt::submitButton("search",false) ?>
+		<label id="advancedSearchLabel" onclick="displayAdvancedSearch();" class="sLink"><?= Txt::trad("advancedSearch") ?> <img src="app/img/plusSmall.png"></label>
 		<input type="hidden" name="advancedSearch" value="<?= Req::getParam("advancedSearch") ?>">
 	</div>
 
-	<div class="vDivAdvancedSearch">
+	<div class="advancedSearchBlock">
 		<!--MODE DE RECHERCHE-->
-		<div class="vSearchTab">
-			<div class="vSearchTabLeft"><?= Txt::trad("rechercher") ?></div>
-			<div class="vSearchTablRight">
+		<div class="vAdvancedSearchTab">
+			<div><?= Txt::trad("search") ?></div>
+			<div>
 				<select name="searchMode">
-					<option value="someWords"><?= Txt::trad("recherche_avancee_mots_certains") ?></option>
-					<option value="allWords"><?= Txt::trad("recherche_avancee_mots_tous") ?></option>
-					<option value="exactPhrase"><?= Txt::trad("recherche_avancee_expression_exacte") ?></option>
+					<?php foreach(["someWords","allWords","exactPhrase"] as $tmpOption)	{echo "<option value=\"".$tmpOption."\" ".(Req::getParam("searchMode")==$tmpOption?'selected':null).">".Txt::trad("advancedSearch".ucfirst($tmpOption))."</option>";} ?>
 				</select>
-				<?php if(Req::isParam("searchMode")) {echo "<script>$('[name=searchMode]').val('".Req::getParam("searchMode")."');</script>";} ?>
 			</div>
 		</div>
 		<!--DATE DE CREATION-->
-		<div class="vSearchTab">
-			<div class="vSearchTabLeft">
-				<?= Txt::trad("rechercher_dateCrea") ?>
-			</div>
-			<div class="vSearchTablRight">
+		<div class="vAdvancedSearchTab">
+			<div><?= Txt::trad("searchDateCrea") ?></div>
+			<div>
 				<select name="creationDate">
-					<option value="all"><?= Txt::trad("tous") ?></option>
-					<option value="day"><?= Txt::trad("rechercher_dateCrea_jour") ?></option>
-					<option value="week"><?= Txt::trad("rechercher_dateCrea_semaine") ?></option>
-					<option value="month"><?= Txt::trad("rechercher_dateCrea_mois") ?></option>
-					<option value="year"><?= Txt::trad("rechercher_dateCrea_annee") ?></option>
+					<option value="all"><?= Txt::trad("all") ?></option>
+					<?php foreach(["day","week","month","year"] as $tmpOption)	{echo "<option value=\"".$tmpOption."\" ".(Req::getParam("creationDate")==$tmpOption?'selected':null).">".Txt::trad("searchDateCrea".ucfirst($tmpOption))."</option>";} ?>
 				</select>
-				<?php if(Req::isParam("creationDate")) {echo "<script>$('[name=creationDate]').val('".Req::getParam("creationDate")."');</script>";} ?>
 			</div>
 		</div>
 		<!--SELECTION DE MODULES-->
-		<div class="vSearchTab">
-			<div class="vSearchTabLeft">
-				<?= Txt::trad("liste_modules") ?>
-			</div>
-			<div class="vSearchTablRight">
+		<div class="vAdvancedSearchTab">
+			<div><?= Txt::trad("listModules") ?></div>
+			<div>
 				<?php
-				foreach(self::$curSpace->moduleList() as $tmpModule)
-				{
+				foreach(self::$curSpace->moduleList() as $tmpModule){
 					if(method_exists($tmpModule["ctrl"],"plugin")){
-						$moduleChecked=(Req::isParam("searchModules")==false || in_array($tmpModule["moduleName"],Req::getParam("searchModules"))) ? "checked='checked'" : "";
-						$moduleName=ucfirst(Txt::trad(strtoupper($tmpModule["moduleName"])."_headerModuleName"));
-						echo "<div class='vDivModules'><input type='checkbox' name='searchModules[]' value='".$tmpModule["moduleName"]."' ".$moduleChecked."> ".$moduleName."</div>";
+						$moduleChecked=(Req::isParam("searchModules")==false || in_array($tmpModule["moduleName"],Req::getParam("searchModules")))  ?  "checked='checked'"  :  "";
+						$moduleInputId="searchModules".$tmpModule["moduleName"];
+						$moduleName=Txt::trad(strtoupper($tmpModule["moduleName"])."_headerModuleName");
+						echo "<div class='vAdvancedSearchOption'><input type='checkbox' name='searchModules[]' value='".$tmpModule["moduleName"]."' id='".$moduleInputId."' ".$moduleChecked."><label for='".$moduleInputId."'>".$moduleName."</label></div>";
 					}
 				}
 				?>
 			</div>
 		</div>
 		<!--SELECTION DES CHAMPS DE RECHERCHE-->
-		<div class="vSearchTab">
-			<div class="vSearchTabLeft">
-				<?= Txt::trad("liste_champs") ?>
-			</div>
-			<div class="vSearchTablRight">
-				<?php foreach($searchFields as $fieldName=>$fieldParams){ ?>
-				<div class="vDivFields" title="<?= Txt::trad("liste_champs_elements")." :<br>".$fieldParams["title"] ?>">
-					<input type="checkbox" name="searchFields[]" value="<?= $fieldName ?>" <?= $fieldParams["checked"] ?>> <?= ucfirst(Txt::trad($fieldName)) ?>
-				</div>
-				<?php } ?>
+		<div class="vAdvancedSearchTab">
+			<div><?= Txt::trad("listFields") ?></div>
+			<div>
+				<?php
+				foreach($searchFields as $fieldName=>$fieldParams){
+					$fieldTitle=Txt::trad("listFieldsElems")." :<br>".$fieldParams["title"];
+					$fieldInputId="searchFields".$fieldName;
+					echo "<div class='vAdvancedSearchOption' title=\"".$fieldTitle."\"><input type='checkbox' name=\"searchFields[]\" value=\"".$fieldName."\" id='".$fieldInputId."' ".$fieldParams["checked"]."><label for='".$fieldInputId."'>".Txt::trad($fieldName)."</label></div>";
+				}
+				?>
 			</div>
 		</div>
 	</div>
@@ -117,18 +119,24 @@ if(Req::isParam("searchText"))
 {
 	//Résultats à afficher
 	$searchTexts=explode(" ",Req::getParam("searchText"));
-	foreach($pluginsSearchResult as $pluginObj)
+	foreach($pluginsList as $tmpObj)
 	{
-		//Entête du module courant
-		if(empty($curModule) || (isset($pluginObj->pluginModule) && $curModule!=$pluginObj->pluginModule)){
-			echo "<div class='pluginModule'><hr><img src=\"app/img/".$pluginObj->pluginModule."/icon.png\"></div>";
-			$curModule=$pluginObj->pluginModule;
+		//Label & tooltips: suppr les balises html (cf. TinyMce) et réduit la taille du texte (l'affichage des news est spécifique: affichage complet avec menu context)
+		if($tmpObj::objectType!="dashboardNews")  {$tmpObj->pluginLabel=Txt::cleanPlugin($tmpObj->pluginLabel,300);}
+		$tmpObj->pluginTooltip=Txt::cleanPlugin($tmpObj->pluginTooltip,500);
+		//Affiche le libellé du module?
+		if(empty($tmpModuleName) || $tmpModuleName!=$tmpObj->pluginModule){
+			echo "<div class='vModuleLabel'><img src='app/img/".$tmpObj->pluginModule."/icon.png'>".Txt::trad(strtoupper($tmpObj->pluginModule)."_headerModuleName")."<hr></div>";
+			$tmpModuleName=$tmpObj->pluginModule;
 		}
-		//ligne de l'element de résultat
-		$pluginObj->pluginIcon=(!empty($pluginObj->pluginIsFolder)) ? "folder.png" : "dotY.png";
-		foreach($searchTexts as $searchText)	{$pluginObj->pluginLabel=preg_replace("/".$searchText."/i", "<span class='vSearchWordResult'>".$searchText."</span>", $pluginObj->pluginLabel);}
-		echo "<div class='menuContextLine sLink'><div class='menuContextIcon' onclick=\"".$pluginObj->pluginJsIcon."\"><img src='app/img/".$pluginObj->pluginIcon."' class='pluginIcon'></div><div class='menuContextTxt' title=\"".$pluginObj->pluginTitle."\" onclick=\"".$pluginObj->pluginJsLabel."\">".$pluginObj->pluginLabel."</div></div>";
+		//Surligne les mots recherchés dans le label des résultats
+		foreach($searchTexts as $searchText)  {$tmpObj->pluginLabel=preg_replace("/".$searchText."/i", "<span class='vSearchResultWord'>".$searchText."</span>", $tmpObj->pluginLabel);}
+		//Affiche les plugins "search"
+		echo "<div class='menuLine sLink objHover'>
+					<div class='menuIcon' onclick=\"".$tmpObj->pluginJsIcon."\"><img src='app/img/".$tmpObj->pluginIcon."'></div>
+					<div title=\"".$tmpObj->pluginTooltip."\" onclick=\"".$tmpObj->pluginJsLabel."\">".$tmpObj->pluginLabel."</div>
+			  </div>";
 	}
 	//Aucun résultat à afficher
-	if(empty($pluginsSearchResult))	{echo "<div class='pluginEmpty'>".Txt::trad("aucun_resultat")."</div>";}
+	if(empty($pluginsList))  {echo "<div class='emptyContainer'>".Txt::trad("noResults")."</div>";}
 }

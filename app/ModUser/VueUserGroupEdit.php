@@ -1,69 +1,86 @@
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(700);
+lightboxSetWidth(600);
 
-////	Controle du formulaire
-function formControl(targetObjId)
-{
-	//Vérif la présence du titre
-	if($("#form-"+targetObjId+" [name='title']").isEmpty()){
-		displayNotif("<?= Txt::trad("champs_obligatoire")." : ".Txt::trad("title") ?>");
-		$("#form-"+targetObjId+" [name='title']").fieldFocus();
-		return false;
-	}
-	// Au moins 2 utilisateurs sélectionnés
-	if($("#form-"+targetObjId+" [name='userList[]']:checked").length<2){
-		displayNotif("<?= Txt::trad("selectionner_2users") ?>");
-		return false;
-	}
-}
+////	INIT
+$(function(){
+	////	Controle du formulaire
+	$("form").submit(function(){
+		//Vérif la présence du titre
+		if($(this).find("[name='title']").isEmpty()){
+			notify("<?= Txt::trad("requiredFields")." : ".Txt::trad("title") ?>");
+			$(this).find("[name='title']").focusRed();
+			return false;
+		}
+		// Au moins 2 utilisateurs sélectionnés
+		if($(this).find("[name='userList[]']:checked").length<2){
+			notify("<?= Txt::trad("selectUsers") ?>");
+			return false;
+		}
+	});
+});
 </script>
 
 <style>
-form				{margin:30px 0px 0px 10px; width:93%; padding:10px; border: #999 1px solid;}
-#form-userGroup-0	{display:none;}/*masque le premier groupe : nouveau groupe*/
-.labelDetail		{font-size:95%; margin-top:8px;}
-.labelSpaceName		{font-style:italic;}
-input[name='title']	{width:50%; margin-bottom:5px;}
-.vGroupAutor				{float:right; font-style:italic;}
-[id^='userListMenu']{overflow:auto; max-height:150px;}
-.userListUser		{display:inline-block; width:32%; font-size:95%;}
-.formButtons		{margin-top:10px; text-align:right;}
-button				{width:120px;}
-[src*='delete.png']	{margin-left:10px;}
-#addGroup			{margin-top:30px; margin-right:10px; text-align:center;}
+/*Titre du lightbox*/
+#labelSpaceName					{font-style:italic;}
+/*formulaires*/
+.miscContainer					{margin-top:40px; padding:10px; border:#999 1px solid;}
+.miscContainer:last-of-type		{display:none; border:#999 2px solid;}/*masque le dernier formulaire : ajout d'element*/
+input[name='title']				{width:50%;}
+.vUserListMenu					{margin-top:20px; overflow:auto; max-height:150px;}
+.userListUser					{display:inline-block; width:33%; padding:2px;}
+.userListUser input				{display:none;}
+.vAutorSubmit					{display:table; width:100%; margin-top:20px;}
+.vAutorSubmit>div				{display:table-cell; vertical-align:middle;}
+.vAutorSubmit>div:first-child	{font-style:italic; font-weight:normal;}
+.vAutorSubmit>div:last-child	{text-align:right;}
+.vAutorSubmit button			{width:120px; margin-right:10px;}
+/*Ajout d'element*/
+#addElem						{margin-top:50px; text-align:center;}
+#addElem button					{width:200px; height:50px;}
+
+/*RESPONSIVE FANCYBOX (440px)*/
+@media screen and (max-width:440px){
+	.vAutorSubmit, .vAutorSubmit>div  {display:block; margin-top:20px;}
+	.userListUser	{width:48%; padding:5px;}
+}
 </style>
 
-<div class="lightboxTitle">
-	<img src="app/img/user/userGroup.png"> <?= Txt::trad("USER_groupe_espace") ?> : <span class="labelSpaceName"><?= Ctrl::$curSpace->name ?></span>
-	<div class="labelDetail"><?= Txt::trad("USER_droit_gestion_groupes") ?></div>
-</div>
+<div class="lightboxContent">
+	<div class="lightboxTitle"><img src="app/img/user/userGroup.png"> <?= Txt::trad("USER_spaceGroups") ?> : <div id="labelSpaceName"><?= Ctrl::$curSpace->name ?></div></div>
 
-<!--LISTE LES GROUPES-->
-<?php foreach($groupList as $cptGroup=>$tmpGroup){ ?>
-<form action="index.php" method="post" class="sBlock" id="form-<?= $tmpGroup->tmpId ?>" OnSubmit="return formControl('<?= $tmpGroup->tmpId ?>');">
-	<!--AUTEUR & TITRE-->
-	<div class="vGroupAutor"><?= $tmpGroup->createdBy ?></div>
-	<input type="text" name="title" value="<?= $tmpGroup->title ?>" placeholder="<?= Txt::trad("title") ?>">
-	<!--USERS-->
-	<hr class="hrGradient">
-	<div id="userListMenu<?= $tmpGroup->tmpId ?>">
-		<?php foreach($usersList as $tmpUser){ ?>
-			<div class="userListUser">
-				<input type="checkbox" name="userList[]" value="<?= $tmpUser->_id ?>" id="box<?= $tmpGroup->tmpId.$tmpUser->_targetObjId ?>" <?= in_array($tmpUser->_id,$tmpGroup->userIds)?"checked":null ?>>
-				<label for="box<?= $tmpGroup->tmpId.$tmpUser->_targetObjId ?>"><?= $tmpUser->display() ?></label>
-			</div>
-		<?php } ?>
-	</div>
-	<!--VALIDATION/SUPPRESSION-->
-	<div class="formButtons">
-		<input type="hidden" name="targetObjId" value="<?= $tmpGroup->tmpId ?>">
-		<?= ($tmpGroup->isNew()) ? Txt::formValidate("ajouter",false) : Txt::formValidate("modifier",false) ?>
-		<?php if($tmpGroup->isNew()==false){ ?><img src="app/img/delete.png" class="sLink" title="<?= Txt::trad("supprimer") ?>" onclick="if(confirm('<?= Txt::trad("confirmDelete",true) ?>')) {lightboxClose(true,'<?= $tmpGroup->getUrl("delete") ?>');}"><?php } ?> 
-	</div>
-</form>
-<?php } ?>
+	<div class="infos"><?= Txt::trad("USER_groupEditInfo") ?></div>
 
-<div id="addGroup">
-	<button onclick="$('#form-userGroup-0').slideToggle(100);$('#form-userGroup-0 [name=title]').focus();"><?= Txt::trad("ajouter") ?></button>	
+	<?php
+	////	LISTE LES GROUPES D'UTILISATEURS
+	foreach($groupList as $cptGroup=>$tmpGroup)
+	{
+		//Liste des utilisateurs (inputs)
+		$userListInputs=null;
+		foreach($usersList as $tmpUser){
+			$tmpUserId="box_".$tmpGroup->tmpId."_".$tmpUser->_targetObjId;
+			$tmpUserChecked=in_array($tmpUser->_id,$tmpGroup->userIds)  ?  "checked"  :  null;
+			$userListInputs.="<div class='userListUser'>
+								<input type='checkbox' name='userList[]' value='".$tmpUser->_id."' id='".$tmpUserId."' ".$tmpUserChecked.">
+								<label for='".$tmpUserId."'>".$tmpUser->getLabel()."</label>
+							  </div>";
+		}
+		//Affichage du formulaire
+		$buttonsSubmitDelete=($tmpGroup->isNew())  ?  Txt::submitButton("add",false)  :  Txt::submitButton("modify",false);
+		if($tmpGroup->isNew()==false)  {$buttonsSubmitDelete.="<img src='app/img/delete.png' class='sLink' title=\"".Txt::trad("delete")."\" onclick=\"if(confirm('".Txt::trad("confirmDelete",true)."')){lightboxClose('".$tmpGroup->getUrl("delete")."');}\">";}
+		echo "<form action='index.php' method='post' class='miscContainer'>
+				<input type='text' name='title' value=\"".$tmpGroup->title."\" placeholder=\"".Txt::trad("title")."\">
+				<div class='vUserListMenu'>".$userListInputs."</div>
+				<div class='vAutorSubmit'>
+					<div>".$tmpGroup->createdBy."</div>
+					<div>".$buttonsSubmitDelete."<input type='hidden' name='targetObjId' value='".$tmpGroup->tmpId."'></div>
+				</div>
+			  </form>";
+	}
+	?>
+
+	<div id="addElem">
+		<button onclick="$('form:last-of-type').slideToggle();$('form:last-of-type [name=title]').focus();"><img src="app/img/plus.png"> <?= Txt::trad("USER_addGroup") ?></button>	
+	</div>
 </div>

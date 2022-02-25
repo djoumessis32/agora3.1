@@ -1,4 +1,12 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Modele des groupes d'utilisateurs
  */
@@ -7,11 +15,6 @@ class MdlUserGroup extends MdlObject
 	const moduleName="user";
 	const objectType="userGroup";
 	const dbTable="ap_userGroup";
-	const hasAccessRight=false;
-	const hasShortcut=false;
-	const hasAttachedFiles=false;
-	const hasNotifMail=false;
-	//Champs obligatoires et de tri des résultats
 	public static $requiredFields=array("title");
 	public static $sortFields=array("title@asc","title@desc");
 
@@ -25,15 +28,16 @@ class MdlUserGroup extends MdlObject
 		$this->userIds=Txt::txt2tab($this->_idUsers);
 		//Liste des users : tableau d'Id et libellé des users
 		$this->usersLabel=null;
-		foreach($this->userIds as $userId)	{$this->usersLabel.=Ctrl::getObj("user",$userId)->display().", ";}
+		foreach($this->userIds as $userId)	{$this->usersLabel.=Ctrl::getObj("user",$userId)->getLabel().", ";}
 		$this->usersLabel=trim($this->usersLabel,", ");
 	}
 
 	/*
-	 * SURCHARGE : Droit d'accès à l'objet
+	 * SURCHARGE : Droit d'accès au groupe
 	 */
 	public function accessRight()
 	{
+		//Init la mise en cache
 		if($this->_accessRight===null){
 			$this->_accessRight=parent::accessRight();
 			//Ajoute l'accès en lecture si :  User courant se trouve dans le groupe  OU  l'espace du groupe fait partie des espaces de l'user (pour les affectations d'objet)
@@ -43,18 +47,26 @@ class MdlUserGroup extends MdlObject
 	}
 
 	/*
+	 * SURCHARGE : Droit d'édition du groupe (accès total ou admin d'espace)
+	 */
+	public function editRight()
+	{
+		return (parent::editRight() || Ctrl::$curUser->isAdminSpace());
+	}
+
+	/*
 	 * SURCHARGE : Supprime un groupe
 	 */
 	public function delete()
 	{
 		if($this->deleteRight()){
-			Db::query("DELETE FROM ap_objectTarget WHERE target='G".$this->_id."'");
+			Db::query("DELETE FROM ap_objectTarget WHERE target=".Db::format("G".$this->_id));
 			parent::delete();
 		}
 	}
 
 	/*
-	 * Groupes d'utilisateurs (Affectés à un espace ET/OU Affectés à un utilisateur?)					(ex "groupes_users(()")
+	 * Groupes d'utilisateurs (Affectés à un espace ET/OU Affectés à un utilisateur?)
 	 */
 	public static function getGroups($objSpace=null, $objUser=null)
 	{
@@ -65,10 +77,10 @@ class MdlUserGroup extends MdlObject
 	}
 
 	/*
-	 * SURCHARGE : Droit d'ajouter un nouveau groupe
+	 * Droit d'ajouter un nouveau groupe pour l'user courant
 	 */
 	public static function addRight()
 	{
-		return (Ctrl::$curUser->isAdminCurSpace() || (Ctrl::$curUser->isUser() && Ctrl::$curSpace->moduleOptionEnabled("user","ajout_utilisateurs_groupe")));
+		return (Ctrl::$curUser->isAdminSpace() || (Ctrl::$curUser->isUser() && Ctrl::$curSpace->moduleOptionEnabled(self::moduleName,"allUsersAddGroup")));
 	}
 }

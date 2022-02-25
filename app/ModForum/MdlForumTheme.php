@@ -1,4 +1,12 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Modele des themes de sujets
  */
@@ -7,11 +15,6 @@ class MdlForumTheme extends MdlObject
 	const moduleName="forum";
 	const objectType="forumTheme";
 	const dbTable="ap_forumTheme";
-	const hasAccessRight=false;
-	const hasShortcut=false;
-	const hasAttachedFiles=false;
-	const hasNotifMail=false;
-	//Champs obligatoires et de tri des résultats
 	public static $requiredFields=array("title");
 	public static $sortFields=array("title@asc","title@desc");
 
@@ -35,7 +38,7 @@ class MdlForumTheme extends MdlObject
 	public function display()
 	{
 		if(!empty($this->title))			{return "<div class='themeColor' style=\"background:".$this->color."\">&nbsp;</div> ".$this->title;}
-		elseif($this->undefinedTheme==true)	{return "<div class='themeColor' style='background:#444'>&nbsp;</div> ".Txt::trad("FORUM_sans_theme");}
+		elseif($this->undefinedTheme==true)	{return "<div class='themeColor' style='background:#444'>&nbsp;</div> <i>".Txt::trad("FORUM_noTheme")."</i>";}
 	}
 
 	/*
@@ -60,11 +63,11 @@ class MdlForumTheme extends MdlObject
 	}
 
 	/*
-	 * SURCHARGE : Droit d'ajouter un nouveau theme
+	 * Droit d'ajouter un nouveau theme
 	 */
 	public static function addRight()
 	{
-		return (Ctrl::$curUser->isAdminCurSpace() || (Ctrl::$curUser->isUser() && Ctrl::$curSpace->moduleOptionEnabled("forum","ajout_sujet_theme")));
+		return (Ctrl::$curUser->isAdminSpace() || (Ctrl::$curUser->isUser() && Ctrl::$curSpace->moduleOptionEnabled(self::moduleName,"allUsersAddTheme")));
 	}
 
 	/*

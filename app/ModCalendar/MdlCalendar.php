@@ -1,27 +1,33 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Modele des agendas
  */
 class MdlCalendar extends MdlObject
 {
-	//Propriétés principales
 	const moduleName="calendar";
 	const objectType="calendar";
 	const dbTable="ap_calendar";
+	const hasAccessRight=true;
 	const MdlObjectContent="MdlCalendarEvent";
-	//Propriétés d'IHM
-	const hasShortcut=false;
-	const hasNotifMail=false;
-	//Droit de supprimer l'agenda perso. True si suppression de l'user correspondant
-	public static $persoCalendarDeleteRight=false;
-	//Champs obligatoires, Champs de recherche et Champs de tri d'affichage
+	const hasAttachedFiles=true;
 	public static $requiredFields=array("title");
 	public static $searchFields=array("title","description");
-	//Valeurs en cache (calculées qu'1 fois)
+	//Droit de supprimer l'agenda personel : "true" si on supprime l'user en question
+	public static $persoCalendarDeleteRight=false;
+	//Valeurs mises en cache
 	private static $_visibleCalendars=null;
-	private static $_visiblePersoCalendars=null;
-	private static $_displayedCalendars=null;
+	private static $_myCalendars=null;
 	private static $_affectationCalendars=null;
+	private static $_addProposeEvtRight=null;
+	
 
 
 	/*
@@ -30,8 +36,12 @@ class MdlCalendar extends MdlObject
 	function __construct($objIdOrValues=null)
 	{
 		parent::__construct($objIdOrValues);
-		//Libellé de l'agenda perso = nom de l'utilisateur correspondant
-		if($this->type=="user")	{$this->title=$this->displayAutor();}
+		//Libellé de l'agenda perso
+		if($this->type=="user"){
+			$this->title=$this->displayAutor();//Pour l'affichage
+			$this->userName=Ctrl::getObj("user",$this->_idUser)->name;//Pour le tri
+			$this->userFirstName=Ctrl::getObj("user",$this->_idUser)->firstName;//idem
+		}
 		//Plage horaire de l'agenda
 		if(empty($this->timeSlot)){
 			$this->timeSlotBegin=8;
@@ -52,29 +62,25 @@ class MdlCalendar extends MdlObject
 	}
 
 	/*
-	 * SURCHARGE : Privilège de droits d'accès pour l'admin d'espace : pas sur les agendas persos
-	 */
-	public function accessRightAdminSpacePrivilege()
-	{
-		return ($this->type=="user");
-	}
-
-	/*
-	 * SURCHARGE : Droit d'ajouter du contenu dans l'objet conteneur. Pour les "guests" : uniquement des propositions d'evt
-	 */
-	public function editContentRight()
-	{
-		return (Ctrl::$curUser->isUser())  ?  parent::editContentRight()  :  false;
-	}
-
-	/*
-	 * SURCHARGE : Droit d'ajouter un agenda (partagé)
+	 * Droit d'ajouter un agenda de ressource
 	 */
 	public static function addRight()
 	{
-		return (Ctrl::$curUser->isAdminCurSpace() || (Ctrl::$curUser->isUser() && Ctrl::$curSpace->moduleOptionEnabled("dashboard","ajout_agenda_ressource_admin")==false));
+		return (Ctrl::$curUser->isAdminSpace() || (Ctrl::$curUser->isUser() && Ctrl::$curSpace->moduleOptionEnabled(self::moduleName,"adminAddRessourceCalendar")==false));
 	}
-	
+
+	/*
+	 * Droit d'ajouter/proposer un événement :  Toujours ok pour les users, sinon pour les Guests on renvoie "true" uniquement si l'agenda courant est affecté en écriture à tous les users de l'espace
+	 */
+	public function addProposeEvtRight()
+	{
+		if(self::$_addProposeEvtRight===null){
+			if(Ctrl::$curUser->isUser())	{self::$_addProposeEvtRight=true;}
+			else							{self::$_addProposeEvtRight=(Db::getVal("SELECT count(*) FROM ap_objectTarget WHERE objectType=".Db::format(static::objectType)." AND _idObject=".$this->_id." AND _idSpace=".Ctrl::$curSpace->_id." AND target='spaceUsers' AND accessRight>1")>0);}
+		}
+		return self::$_addProposeEvtRight;
+	}
+
 	/*
 	 * SURCHARGE : droit de suppression d'un agenda : pas pour les agendas d'users
 	 */
@@ -96,7 +102,7 @@ class MdlCalendar extends MdlObject
 				$tmpEvt=Ctrl::getObj("calendarEvent",$_idEvt);
 				$tmpEvt->delete();
 			}
-			//Supprime les jointures de l'agenda avec les evenements
+			//Puis supprime les affectations de l'agenda aux evenements sur plusieurs agendas
 			Db::query("DELETE FROM ap_calendarEventAffectation WHERE _idCal=".$this->_id);
 			//Supprime enfin l'agenda
 			parent::delete();
@@ -104,27 +110,21 @@ class MdlCalendar extends MdlObject
 	}
 
 	/*
-	 * Evenements de l'agenda
+	 * Evenements de l'agenda en fonction d'une période (evt confirmés)
 	 */
-	public function evtList($periodBegin=null, $periodEnd=null, $accessRightMini=0.5, $orderByHourMinute=true, $confirmed=true, $pluginParams=null)
+	public function evtList($curBegin=null, $curEnd=null, $accessRightMini=0.5, $orderByHourMinute=true, $pluginParams=null)
 	{
-		////	Init les sélections
-		$sqlConfirmed=$sqlPeriod=$sqlPlugins=null;
-		////	Evenements confirmés / pas confirmés / tout ($confirmed=="null")
-		if($confirmed==true)		{$sqlConfirmed="AND confirmed=1";}
-		elseif($confirmed==false)	{$sqlConfirmed="AND confirmed is NULL";}
-		////	Selection d'une période (evenements périodiques OU situés dans la période).
-		////	Attention! Cette liste récupère TOUT LES EVT PERIODIQUES. Il faudra donc re-filtrer cette liste avec "periodEvtList()" qui fera lui même appel à "dayEvtList()"
-		if(!empty($periodBegin) && !empty($periodEnd)){
-			$dateTimeBegin=Db::format(date("Y-m-d 00:00",$periodBegin));
-			$dateTimeEnd=Db::format(date("Y-m-d 23:59",$periodEnd));
-			$sqlPeriod="AND ( periodType is not null OR (dateBegin between ".$dateTimeBegin." and ".$dateTimeEnd.") OR (dateEnd between ".$dateTimeBegin." and ".$dateTimeEnd.") OR (DateBegin <= ".$dateTimeBegin." and DateEnd >= ".$dateTimeEnd.") )";
+		////	Evt sur une période/créneau donnée?
+		$sqlTimeSlot=null;
+		if(!empty($curBegin) && !empty($curEnd)){
+			$tmpBegin=Db::format(date("Y-m-d 00:00",$curBegin));
+			$tmpEnd=Db::format(date("Y-m-d 23:59",$curEnd));
+			$sqlTimeSlot="AND (  (dateBegin between ".$tmpBegin." and ".$tmpEnd.")  OR  (dateEnd between ".$tmpBegin." and ".$tmpEnd.")  OR  (DateBegin <= ".$tmpBegin." and DateEnd >= ".$tmpEnd.")  OR  periodType is not null)";
 		}
-		////	Sélection d'un plugin?
-		if(!empty($pluginParams))	{$sqlPlugins="AND ".MdlCalendarEvent::sqlPluginObjects($pluginParams);}
 		////	 Liste des evenements, en fonction des droits d'accès. Tri par "Heure:Minute" si affiché sur un jour (cf. evt périodiques) OU Tri par "dateBegin" si affiché une liste complete (cf. plugins)
-		$sqlOrderBy=($orderByHourMinute==true)  ?  "DATE_FORMAT(dateBegin,'%H:%i') ASC"  :  "dateBegin ASC";
-		$eventsObjList=Db::getObjTab("calendarEvent","SELECT * FROM ap_calendarEvent WHERE _id IN (select _idEvt from ap_calendarEventAffectation where _idCal=".$this->_id." ".$sqlConfirmed.") ".$sqlPeriod." ".$sqlPlugins." ORDER BY ".$sqlOrderBy);
+		$sqlPlugins=(!empty($pluginParams))  ?  "AND ".MdlCalendarEvent::sqlPluginObjects($pluginParams)  :  null;//Sélection d'un plugin?
+		$sqlOrderBy=($orderByHourMinute==true)  ?  "DATE_FORMAT(dateBegin,'%H:%i') ASC"  :  "dateBegin ASC";//Filtre par "H:m" ou par "dateBegin"
+		$eventsObjList=Db::getObjTab("calendarEvent","SELECT * FROM ap_calendarEvent WHERE _id IN (select _idEvt from ap_calendarEventAffectation where _idCal=".$this->_id." and confirmed=1) ".$sqlTimeSlot." ".$sqlPlugins." ORDER BY ".$sqlOrderBy);
 		////	renvoie les evts en fonction du droit d'accès minimum 
 		$evtListReturned=[];
 		foreach($eventsObjList as $tmpObj){
@@ -135,34 +135,42 @@ class MdlCalendar extends MdlObject
 	}
 
 	/*
-	 * Sélectionne les évenements d'une journée ou d'une période de qq heures, à partir d'une liste d'evt					(ex "liste_evenements()")
+	 * Filtre des Evts pour une journée OU un créneau horaire (cf: "actionTimeSlotBusy()")
+	 * Note : les evts périodiques ne sont récupérés qu'une fois. On utilise donc cette fonction qui clone chaque occurence d'un même evenement, répété sur plusieurs jours.
 	 */
-	public static function dayEvtList($evtList, $timeDayBegin, $timeDayEnd)
+	public static function periodEvts($evtList, $curBegin, $curEnd)
 	{
 		$evtListReturned=[];
 		foreach($evtList as $tmpEvt)
 		{
-			//Clone l'evt pour chaque instance d'un événement sur plusieurs jours ou d'un événement périodique : une instance d'evt par jour
+			//Clone l'evt pour chaque jour (evt sur plusieurs jours ou périodique : une instance d'evt par jour)  &&  Debut/fin de l'evt au format timestamp 
 			$tmpEvt=clone $tmpEvt;
 			$evtBegin=strtotime($tmpEvt->dateBegin);
 			$evtEnd=strtotime($tmpEvt->dateEnd);
-			//EVT SUR LA JOURNEE : Début de l'evt dans la journée || Fin de l'evt dans la journée || evt avant et après la journée
-			if(($evtBegin>=$timeDayBegin && $evtBegin<=$timeDayEnd) || ($evtEnd>=$timeDayBegin && $evtEnd<=$timeDayEnd) || ($evtBegin<=$timeDayBegin && $evtEnd>=$timeDayEnd))	{$evtListReturned[]=$tmpEvt;}
-			//EVT PERIODIQUE, SUR LA JOURNEE =>  evt déjà commencé  &&  (pas de fin de périodicité || fin de périodicité pas encore arrivé)  &&  (pas de date d'exception || "dateBegin" absent des dates d'exception)
-			elseif(!empty($tmpEvt->periodType)  &&  $evtBegin<$timeDayBegin  &&  (empty($tmpEvt->periodDateEnd) || $timeDayEnd<=strtotime($tmpEvt->periodDateEnd." 23:59"))  &&  (empty($tmpEvt->periodDateExceptions) || !in_array(date("Y-m-d",$timeDayBegin),Txt::txt2tab($tmpEvt->periodDateExceptions))))
+			//EVT SUR LA JOURNEE/CRENEAU HORAIRE : Début de l'evt dans le créneau || Fin de l'evt dans le créneau || evt avant et après le créneau
+			if(static::evtInTimeSlot($evtBegin,$evtEnd,$curBegin,$curEnd))	{$evtListReturned[]=$tmpEvt;}
+			//EVT PERIODIQUE
+			elseif(!empty($tmpEvt->periodType))
 			{
-				//L'evt périodique est présent sur le jour courant : Reformate le début/fin de l'evt pour qu'il corresponde à la date courante
-				$periodValues=Txt::txt2tab($tmpEvt->periodValues);
-				$dateModifiedFormat=$dateConservedFormat=null;
-				if($tmpEvt->periodType=="weekDay" && in_array(date("N",$timeDayBegin),$periodValues))													{$dateModifiedFormat="Y-m-d"; $dateConservedFormat=" H:i";}//jour de semaine
-				elseif($tmpEvt->periodType=="monthDay" && in_array(date("d",$timeDayBegin),$periodValues))												{$dateModifiedFormat="Y-m"; $dateConservedFormat="-d H:i";}//jour du mois
-				elseif($tmpEvt->periodType=="month" && in_array(date("m",$timeDayBegin),$periodValues) && date("d",$evtBegin)==date("d",$timeDayBegin))	{$dateModifiedFormat="Y-m"; $dateConservedFormat="-d H:i";}//mois
-				elseif($tmpEvt->periodType=="year" && date("m-d",$evtBegin)==date("m-d",$timeDayBegin))													{$dateModifiedFormat="Y"; $dateConservedFormat="-m-d H:i";}//année
-				//Ajoute à la liste && Reformate le début/fin
-				if(!empty($dateModifiedFormat) && !empty($dateConservedFormat)){
-					$tmpEvt->dateBegin=date($dateModifiedFormat,$timeDayBegin).date($dateConservedFormat,$evtBegin);
-					$tmpEvt->dateEnd  =date($dateModifiedFormat,$timeDayEnd).date($dateConservedFormat,$evtEnd);
-					$evtListReturned[]=$tmpEvt;
+				//Evenement sur le jour =>  déjà commencé  &&  (pas de fin de périodicité || fin de périodicité pas encore arrivé)  &&  (pas de date d'exception || "dateBegin" absent des dates d'exception)
+				if($evtBegin<$curBegin  &&  (empty($tmpEvt->periodDateEnd) || $curEnd<=strtotime($tmpEvt->periodDateEnd." 23:59"))  &&  (empty($tmpEvt->periodDateExceptions) || in_array(date("Y-m-d",$curBegin),Txt::txt2tab($tmpEvt->periodDateExceptions))==false))
+				{
+					//L'evt périodique est présent sur le jour courant : Reformate le début/fin de l'evt pour qu'il corresponde à la date courante
+					$periodValues=Txt::txt2tab($tmpEvt->periodValues);
+					$dateFormatModif=$dateFormatConserved=null;
+					if($tmpEvt->periodType=="weekDay" && in_array(date("N",$curBegin),$periodValues))												{$dateFormatModif="Y-m-d";	$dateFormatConserved=" H:i";}//jour de semaine
+					elseif($tmpEvt->periodType=="month" && in_array(date("m",$curBegin),$periodValues) && date("d",$evtBegin)==date("d",$curBegin))	{$dateFormatModif="Y-m";	$dateFormatConserved="-d H:i";}//jour du mois
+					elseif($tmpEvt->periodType=="year" && date("m-d",$evtBegin)==date("m-d",$curBegin))												{$dateFormatModif="Y";		$dateFormatConserved="-m-d H:i";}//jour de l'année
+					//Reformate pour que le début/fin de l'evt corresponde à la date courante
+					if(!empty($dateFormatModif) && !empty($dateFormatConserved))
+					{
+						$tmpEvt->dateBegin=date($dateFormatModif,$curBegin).date($dateFormatConserved,$evtBegin);
+						$tmpEvt->dateEnd  =date($dateFormatModif,$curEnd).date($dateFormatConserved,$evtEnd);
+						$evtBegin=strtotime($tmpEvt->dateBegin);
+						$evtEnd=strtotime($tmpEvt->dateEnd);
+						//Ajoute l'evt s'il est bien sur le créneau courant (cf. controles de créneaux horaires occupés..)
+						if(static::evtInTimeSlot($evtBegin,$evtEnd,$curBegin,$curEnd))	{$evtListReturned[]=$tmpEvt;}
+					}
 				}
 			}
 		}
@@ -170,79 +178,80 @@ class MdlCalendar extends MdlObject
 	}
 
 	/*
-	 * Evenements sur une période de plusieurs jours, à partir d'une liste d'événements 		(ex "liste_evenements()")
+	 * Controle si un evt est sur une période/créneau donné
 	 */
-	public static function periodEvtList($evtList, $timePeriodBegin, $timePeriodEnd)
+	public static function evtInTimeSlot($evtBegin, $evtEnd, $curBegin, $curEnd)
 	{
-		$evtListReturned=[];
-		for($timeDay=$timePeriodBegin+43200; $timeDay<=$timePeriodEnd; $timeDay+=86400){//12h de décalage (43200sec) pour prendre en compte les heures d'été/hivers
-			$subPeriodBegin=strtotime(date("Y-m-d",$timeDay)." 00:00");
-			$subPeriodEnd=strtotime(date("Y-m-d",$timeDay)." 23:59");
-			$evtListReturned=array_merge($evtListReturned, static::dayEvtList($evtList,$subPeriodBegin,$subPeriodEnd));
-		}
-		return array_unique($evtListReturned,SORT_REGULAR);//"SORT_REGULAR" pour les objets
+		//Retourne true :  Début de l'evt dans le créneau  ||  Fin de l'evt dans le créneau  ||  evt avant et après le créneau
+		return ($evtBegin>=$curBegin && $evtBegin<=$curEnd) || ($evtEnd>=$curBegin && $evtEnd<=$curEnd) || ($evtBegin<=$curBegin && $evtEnd>=$curEnd);
 	}
 
 	/*
 	 * Droit de confirmer une proposition d'événement?
 	 */
-	public function confirmEventPropositionRight()
+	public function proposedEventConfirmRight()
 	{
-		foreach(self::myCalendars() as $tmpCalendar){
-			if($tmpCalendar->_id==$this->_id)	{return true;}
+		foreach(self::myCalendars() as $tmpCal){
+			if($tmpCal->_id==$this->_id)  {return true;}
 		}
 	}
 
 	/*
-	 * Agendas visibles pour l'user courant																					(ex "$AGENDAS_AFFICHES")
-	 * => agendas de ressource ET agenda persos activés qui nous sont affectés (& celui de l'user courant)
+	 * Agendas visibles pour l'user courant
+	 * => Agendas de ressource & Agenda de l'user courant & Agenda personnels affectés à l'user courant
 	 */
 	public static function visibleCalendars()
 	{
-		if(self::$_visibleCalendars===null){
+		if(self::$_visibleCalendars===null)
+		{
+			//Init la sélection
 			$sqlDisplayedObjects=self::sqlDisplayedObjects();
-			self::$_visibleCalendars=Db::getObjTab("calendar","SELECT DISTINCT * FROM ap_calendar WHERE  (type='ressource' AND ".$sqlDisplayedObjects.")  OR  (type='user' AND _idUser not in (select _id from ap_user where calendarDisabled=1) AND (_idUser=".Ctrl::$curUser->_id." or ".$sqlDisplayedObjects."))");
-			self::$_visibleCalendars=self::sortCalendars(self::$_visibleCalendars);//Tri les agendas
+			//Récupère les agendas de ressource
+			self::$_visibleCalendars=Db::getObjTab("calendar","SELECT DISTINCT * FROM ap_calendar WHERE type='ressource' AND ".$sqlDisplayedObjects);
+			//Ajoute notre agenda perso && les agendas persos auquels on est affecté et qui sont "activés" (pas pour les guests)
+			if(Ctrl::$curUser->isUser()){
+				$personnalCals=Db::getObjTab("calendar","SELECT DISTINCT * FROM ap_calendar WHERE type='user' AND (_idUser=".Ctrl::$curUser->_id." OR ".$sqlDisplayedObjects.") AND _idUser NOT IN (select _id from ap_user where calendarDisabled=1)");
+				self::$_visibleCalendars=array_merge(self::$_visibleCalendars,$personnalCals);
+			}
+			//Tri les agendas par leur nom
+			self::$_visibleCalendars=self::sortCalendars(self::$_visibleCalendars);
 		}
 		return self::$_visibleCalendars;
 	}
 
 	/*
-	 * Agendas de l'user courant : agenda perso & agendas de ressource accessible en écriture (aussi en lecture?)
-	 * exple: pour le dashboard et les propositions d'evt
+	 * Agendas gérés par l'user courant
+	 * => Agenda de l'user courant & Agendas de ressource en accès total ("fullRight()")
 	 */
 	public static function myCalendars()
 	{
-		if(self::$_visiblePersoCalendars===null)
-		{
-			self::$_visiblePersoCalendars=[];
-			foreach(self::visibleCalendars() as $tmpCalendar){
-				if($tmpCalendar->isMyPerso() || ($tmpCalendar->type=="ressource" && $tmpCalendar->fullRight()))
-					{self::$_visiblePersoCalendars[]=$tmpCalendar;}
+		if(self::$_myCalendars===null){
+			self::$_myCalendars=[];
+			foreach(self::visibleCalendars() as $tmpCal){
+				if($tmpCal->isMyPerso() || ($tmpCal->type=="ressource" && $tmpCal->fullRight()))  {self::$_myCalendars[]=$tmpCal;}
 			}
 		}
-		return self::$_visiblePersoCalendars;
+		return self::$_myCalendars;
 	}
 
 	/*
-	 * Agendas sur lesquels l'users courant peut affecter/proposer des événements
-	 * => "visibleCalendars()" + autres agendas des "usersVisibles()"
+	 * Agendas sur lesquels l'user courant peut affecter ou proposer des événements
 	 */
 	public static function affectationCalendars()
 	{
 		if(self::$_affectationCalendars===null)
 		{
+			//// Ajoute les agendas accessibles en lecture
 			self::$_affectationCalendars=self::visibleCalendars();
-			//Uniquement pour les users (pas les guests)
-			if(Ctrl::$curUser->isUser())
+			//// Puis ajoute les agendas persos non accessibles en lecture : pour pouvoir faire les propositions d'événement (Pas dispo pour les "guest")  
+			if(Ctrl::$curUser->isUser() && count(Ctrl::$curSpace->getUsers())>0)
 			{
-				//Récupère les agendas des users de l'espace courant (pas les "usersVisibles()"..)
-				$userIds="0,".implode(",",Ctrl::$curSpace->getUsers("ids"));
-				$usersCalendars=Db::getObjTab("calendar","SELECT DISTINCT * FROM ap_calendar WHERE type='user' AND _idUser IN (".trim($userIds,",").") AND _idUser NOT IN (select _id from ap_user where calendarDisabled=1)");
-				foreach($usersCalendars as $tmpCalendar){
-					if(!in_array($tmpCalendar,self::$_affectationCalendars))	{self::$_affectationCalendars[]=$tmpCalendar;}
+				//Ajoute les agendas qui ne sont pas encore dans la liste
+				foreach(Db::getObjTab("calendar","SELECT DISTINCT * FROM ap_calendar WHERE type='user' AND _idUser IN (".Ctrl::$curSpace->getUsers("idsSql").") AND _idUser NOT IN (select _id from ap_user where calendarDisabled=1)") as $tmpCal){
+					if(!in_array($tmpCal,self::$_affectationCalendars))  {self::$_affectationCalendars[]=$tmpCal;}
 				}
-				self::$_affectationCalendars=self::sortCalendars(self::$_affectationCalendars);//Tri les agendas
+				//Tri les agendas par leur nom
+				self::$_affectationCalendars=self::sortCalendars(self::$_affectationCalendars);//Tri les agendas par leur nom
 			}
 		}
 		return self::$_affectationCalendars;
@@ -251,31 +260,35 @@ class MdlCalendar extends MdlObject
 	/*
 	 * Agendas Affichés actuellement
 	 */
-	public static function displayedCalendars()
+	public static function displayedCalendars($visibleCalendars)
 	{
-		if(self::$_displayedCalendars===null)
+		//Init les agendas à retourner && Récup éventuellement les agendas enregistrés en préférence
+		$displayedCalendars=[];
+		$prefCalendars=Txt::txt2tab(Ctrl::prefUser("displayedCalendars"));
+		//Récupère les agendas à afficher :  Agendas enregistrés en préférences  OU  Agenda de l'espace créé par défaut (_id=1)
+		foreach($visibleCalendars as $tmpCal){
+			if(in_array($tmpCal->_id,$prefCalendars)  || (empty($prefCalendars) && $tmpCal->_id==1 && $tmpCal->type=="ressource"))   {$displayedCalendars[]=$tmpCal;}
+		}
+		//Toujours pas d'agendas à afficher : on prend le premier des $visibleCalendars
+		if(empty($displayedCalendars) && !empty($visibleCalendars))  {$displayedCalendars[]=$visibleCalendars[0];}
+		//Supprime les evénements de plus de 3 ans (lancé en début de session)
+		if(empty($_SESSION["calendarsCleanEvt"]))
 		{
-			self::$_displayedCalendars=[];
-			$visibleCalendars=self::visibleCalendars();
-			$prefDisplayedCalendars=Txt::txt2tab(Ctrl::prefUser("displayedCalendars"));//Agendas affichés, enregistrés en préférence?
-			//Ajoute l'agenda si :  l'agenda est dans les préférences d'affichage ou c'est mon agenda perso (agenda par défaut)
-			foreach($visibleCalendars as $tmpCalendar){
-				if(in_array($tmpCalendar->_id,$prefDisplayedCalendars) || empty($prefDisplayedCalendars) && $tmpCalendar->isMyPerso())	{self::$_displayedCalendars[]=$tmpCalendar;}
+			//Période des evenements "old"
+			$time100YearsAgo=time()-(86400*365*100);
+			$time5YearsAgo=time()-(86400*365*5);
+			//Sélectionne les agendas avec "editFullContentRight()"
+			foreach($displayedCalendars as $tmpCal){
+				if($tmpCal->editFullContentRight()){
+					foreach($tmpCal->evtList($time100YearsAgo,$time5YearsAgo,2) as $tmpEvt){
+						if($tmpEvt->isOldEvt($time5YearsAgo))  {$tmpEvt->delete();}//"isOldEvt()" : date de fin passé && sans périodicité ou périodicité terminé
+					}
+				}
 			}
-			//Pas d'agendas affiché : prend le premier visible
-			if(empty(self::$_displayedCalendars) && !empty($visibleCalendars))	{self::$_displayedCalendars[]=$visibleCalendars[0];}
+			$_SESSION["calendarsCleanEvt"]=true;
 		}
-		return self::$_displayedCalendars;
-	}
-
-	/*
-	 * Agenda courant est affiché?
-	 */
-	public function isDisplayed()
-	{
-		foreach(self::displayedCalendars() as $tmpCalendar){
-			if($tmpCalendar->_id==$this->_id)	{return true;}
-		}
+		//Retour les agendas à afficher
+		return $displayedCalendars;
 	}
 
 	/*
@@ -283,40 +296,41 @@ class MdlCalendar extends MdlObject
 	 */
 	public static function sortCalendars($calendarsTab)
 	{
-		//Créé une liste d'agendas partagés et persos
-		$myCal=$usersCals=$ressourceCals=[];
-		foreach($calendarsTab as $tmpCalendar){
-			if($tmpCalendar->isMyPerso())		{$myCal[]=$tmpCalendar;}
-			elseif($tmpCalendar->type=="user")	{$usersCals[]=$tmpCalendar;}
-			else								{$ressourceCals[]=$tmpCalendar;}
+		//Init le tri des agendas d'users : cf. "__construct()" ci-dessus
+		$userCalendarSortField=(Ctrl::$agora->personsSort=="name")  ?  "userName"  :  "userFirstName";
+		//Spécifie le champ de tri : affiche en premier les calendriers de Ressource, puis le perso, puis ceux des autres users
+		foreach($calendarsTab as $tmpCal){
+			if($tmpCal->type=="ressource")	{$tmpCal->sortField="A__".$tmpCal->title;}
+			elseif($tmpCal->isMyPerso())	{$tmpCal->sortField="B__".$tmpCal->$userCalendarSortField;}
+			else							{$tmpCal->sortField="C__".$tmpCal->$userCalendarSortField;}
 		}
-		//Tri chaque tableau et renvoie l'ensemble
-		usort($usersCals,["self","sortCompareCalendars"]);
-		usort($ressourceCals,["self","sortCompareCalendars"]);
-		return array_merge($myCal, $usersCals, $ressourceCals);
+		//Tri des agendas : puis les agendas partagés -> mon agenda -> puis les autres agendas perso
+		usort($calendarsTab,["self","sortCompareCalendars"]);
+		return $calendarsTab;
 	}
-	public static function sortCompareCalendars($obj1, $obj2)
-	{
-		return strcmp($obj1->title, $obj2->title);
+	//Comparaison binaire de caractere, mais insensible à la casse
+	public static function sortCompareCalendars($obj1, $obj2){
+		return strcasecmp($obj1->sortField, $obj2->sortField);
 	}
 
 	/*
 	 * SURCHARGE : Menu contextuel
 	 */
-	public function menuContext($options=null)
+	public function contextMenu($options=null)
 	{
-		//Accès en édition?
+		//Accès en édition : Export d'evenements (download/par mail) && Import d'événements
 		if($this->editRight())
 		{
-			//Export d'agenda (téléchargement / envoi par mail)
+			//init
 			$urlExportIcs="?ctrl=calendar&action=exportEvents&targetObjId=".$this->_targetObjId;
-			$options["specificOptions"][]=["inMainMenu"=>true,"actionJs"=>"redir('".$urlExportIcs."')","iconSrc"=>"app/img/export.png","label"=>Txt::trad("CALENDAR_exporter_ical")];
-			$options["specificOptions"][]=["inMainMenu"=>true,"actionJs"=>"redir('".$urlExportIcs."&sendMail=true')","iconSrc"=>"app/img/mail.png","label"=>Txt::trad("CALENDAR_exporter_ical_mail"),"tooltip"=>Txt::trad("CALENDAR_exporter_ical_mail2")."<br>".Txt::trad("envoyer_a")." ".Ctrl::$curUser->mail];
-			//Import d'événements ou suppression des d'anciens événements dans l'agenda
-			$options["specificOptions"][]=["inMainMenu"=>true,"actionJs"=>"lightboxOpen('?ctrl=calendar&action=importEvents&targetObjId=".$this->_targetObjId."')","iconSrc"=>"app/img/import.png","label"=>Txt::trad("CALENDAR_importer_ical")];
-			$options["specificOptions"][]=["inMainMenu"=>true,"actionJs"=>"confirmRedir('".Txt::trad("CALENDAR_confirm_suppr_anciens_evt",true)."','?ctrl=calendar&action=oldEvtDelete&targetObjId=".$this->_targetObjId."')","iconSrc"=>"app/img/calendar/oldEvtDelete.png","label"=>Txt::trad("CALENDAR_suppr_anciens_evt"),"tooltip"=>Txt::trad("CALENDAR_suppr_anciens_evt_info")];
+			$icalUrlInput=Txt::trad("CALENDAR_icalUrl")." : <br><input id='urlIcal".$this->_targetObjId."' value=\"".Req::getSpaceUrl()."/?ctrl=misc&action=DisplayIcal&targetObjId=".$this->_targetObjId."&md5Id=".$this->md5Id()."\" style='width:250px;margin-top:5px;' readonly>";
+			//Ajoute les options au menu
+			$options["specificOptions"][]=["actionJs"=>"lightboxOpen('?ctrl=calendar&action=importEvents&targetObjId=".$this->_targetObjId."')",  "iconSrc"=>"calendar/icalImport.png",  "label"=>Txt::trad("CALENDAR_importIcal")];
+			$options["specificOptions"][]=["actionJs"=>"if(confirm('".Txt::trad("confirm",true)."')) redir('".$urlExportIcs."')",  "iconSrc"=>"calendar/icalExport.png",  "label"=>Txt::trad("CALENDAR_exportIcal")];
+			$options["specificOptions"][]=["actionJs"=>"if(confirm('".Txt::trad("confirm",true)."')) redir('".$urlExportIcs."&sendMail=true')",  "iconSrc"=>"mail.png",  "label"=>Txt::trad("CALENDAR_exportEvtMail"), "tooltip"=>Txt::trad("CALENDAR_exportEvtMailInfo")."<br>".Txt::trad("sendTo")." ".Ctrl::$curUser->mail];
+			$options["specificOptions"][]=["actionJs"=>"$('#urlIcal".$this->_targetObjId."').select(); if(confirm('".Txt::trad("CALENDAR_icalUrlCopy",true)."')){document.execCommand('copy');}",  "iconSrc"=>"public.png",  "label"=>$icalUrlInput];
 		}
 		//Renvoie le menu surchargé
-		return parent::menuContext($options);
+		return parent::contextMenu($options);
 	}
 }

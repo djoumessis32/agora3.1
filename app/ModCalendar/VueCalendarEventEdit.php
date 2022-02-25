@@ -1,325 +1,340 @@
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(700);
+lightboxSetWidth(600);
 
-//Init la page
+////	INIT
 $(function(){
-	////	Changement de date/heure : controle des créneaux horaires occupés
+	////	INIT LA PAGE
+	<?php if($curObj->fullRight()==false){ ?>
+		//L'user courant n'est pas l'auteur de l'evt : masque tous les champs, sauf les affectations aux agendas
+		$("#eventDetails,#objMenuLabels,#objMenuBlocks").hide();
+	<?php }else{ ?>
+		//Prérempli les champs
+		$("select[name='periodType']").val("<?= $curObj->periodType ?>");
+		$("select[name='contentVisible']").val("<?= $curObj->contentVisible ?>");
+		$("select[name='_idCat']").val("<?= $curObj->_idCat ?>").trigger("change");//"trigger" pour changer la couleur de l'input
+		$("select[name='important']").val("<?= (int)$curObj->important ?>").trigger("change");//"trigger" pour changer la couleur de l'input. Valeur au format "integer"
+		//Affiche les options de "périodicité" & Infos de créneaux horaires occupés
+		displayPeriodType();
+		timeSlotBusy();
+	<?php } ?>
+	//Surligne les agendas déjà sélectionnés
+	$(".vCalendarInput:checked").each(function(){
+		$(this).parents(".vCalAffectBlock").addClass("sLineSelect");
+	});
+
+	////	Change de date/heure/périodicité (sauf pour les guests) :  Controle si les créneaux horaires sont déjà occupés  &  Affiche si besoin les details de périodicité
+	<?php if(Ctrl::$curUser->isUser()){ ?>
 	$("[name='dateBegin'],[name='timeBegin'],[name='dateEnd'],[name='timeEnd']").change(function(){ timeSlotBusy(); });
-
-	////	Changement de date/heure/périodicité : Affiche les details de périodicité?
 	$("[name='periodType'],[name='dateBegin']").change(function(){ displayPeriodType(); });
+	<?php } ?>
 
-	////	Coche/décoche une proposition ou affectation!
-	$("[name='proposedCalendars[]'],[name='affectationCalendars[]']").change(function(){
-		var tmpSelection=find("propose",this.id) ? "#affectationCalendars" : "#proposedCalendars";
-		$(tmpSelection+this.value).prop("checked",false);
-		if(this.checked)	{$(this).parent().parent().addClass("sTableRowSelect");}
-		else				{$(this).parent().parent().removeClass("sTableRowSelect");}
+	////	Switch la sélection des agendas
+	$("#calsAffectSwitch").click(function(){
+		var calsSelector=".vCalendarInput:enabled";
+		if($(calsSelector).length==$(calsSelector+":checked").length)	{$(calsSelector+":checked").trigger("click");}/*désélectionne tous les agendas*/
+		else															{$(calsSelector+":not(:checked)").trigger("click");}/*sélectionne les agendas pas encore sélectionnés*/
+	});
+
+	////	Check/Unckeck l'input principal d'un agenda (via son "label")
+	$(".vCalendarInput").change(function(){
+		//Coche une proposition d'evt : affiche la notif "l'événement sera proposé..."
+		if(typeof timeoutPropose!="undefined")  {clearTimeout(timeoutPropose);}//Pas de cumul de Timeout
+		timeoutPropose=setTimeout(function(thisInput){
+			if(/proposition/i.test(thisInput.name) && $(thisInput).prop("checked"))  {notify("<?= Txt::trad("CALENDAR_inputProposed") ?>");}
+		},500,this);//Affiche avec un timeout (cf. sélection d'un groupe d'users). Transmet l'input courant en paramètre via "this"
+		//Agenda sélectionné : on surligne le block et affiche si besoin l'option de proposition
+		if(this.checked)	{$(this).parents(".vCalAffectBlock").addClass("sLineSelect").find(".vCalAffectProposition").show();}
+		else				{$(this).parents(".vCalAffectBlock").removeClass("sLineSelect").find(".vCalAffectProposition").hide();}
+		//"uncheck" si besoin l'option de proposition
+		$(this).parents(".vCalAffectBlock").find(".vCalendarInputProposition").prop("checked",false);
+		//Controle d'occupation du créneau horaire de chaque agenda sélectionné
 		timeSlotBusy();
 	});
 
-	////	Sélection d'un groupe d'users
-	$("[name='groupList[]']").on("change",function(){
-		//check/uncheck chaque agenda d'user (..activé)
-		$("[name='affectationCalendars[]'][data-type='user']:enabled").each(function(){
-			//init
-			tmpUserChecked=false;
-			tmpIdUser=$(this).attr("data-idUser");
-			//vérifie que l'user courant est au moins sur un groupe (..sélectionné)
-			$("[name='groupList[]']:checked").each(function(){
-				var userIds=$(this).val().split(",");
-				if($.inArray(tmpIdUser,userIds)!=-1)	{tmpUserChecked=true;}
-			});
-			//check/uncheck l'user
-			$(this).prop("checked",tmpUserChecked);
-		});
+	////	Check/Uncheck l'option de proposition pour un agenda
+	$(".vCalendarInputProposition").change(function(){
+		//"checked" : décoche l'affectation principale et affiche la notif "l'événement sera proposé..."   ||   "unchecked" : masque l'option de proposition et enlève le surlignage de la ligne (retour à l'état initial)
+		if(this.checked)	{$(this).parents(".vCalAffectBlock").find(".vCalendarInput").prop("checked",false);  notify("<?= Txt::trad("CALENDAR_inputProposed") ?>");}
+		else				{$(this).parents(".vCalAffectBlock").removeClass("sLineSelect").find(".vCalAffectProposition").hide();}
 	});
-
-	////	Init la page : Bloque les détails de l'agenda si pas un accès total à l'evt (evt modifié par un autre que son propriétaire)
-	<?php if($curObj->fullRight()==false){ ?>
-	$(".dateBegin,.dateEnd").datepicker("option","disabled",true);
-	$(".vEventDetails input").prop("readonly",true);
-	$(".vEventDetails select").prop("disabled",true);
-	<?php } ?>
-	////	Init la page : Les guests n'ont pas accès aux options d'evt
-	<?php if(Ctrl::$curUser->isUser()==false){ ?>
-		$("#evtPeriodType,#evtOptions,.vAffectations").hide();
-	<?php } ?>
-
-	////	Init la page : valeurs des options
-	$("select[name='periodType']").val("<?= $curObj->periodType ?>");
-	$("select[name='contentVisible']").val("<?= $curObj->contentVisible ?>");
-	$("select[name='_idCat']").val("<?= $curObj->_idCat ?>").trigger("change");//"trigger" pour changer la couleur de l'input
-	$("select[name='important']").val("<?= (int)$curObj->important ?>").trigger("change");//valeur au format "integer". "trigger" pour changer la couleur de l'input
-
-	////	Init la page : Background des lignes avec affectation && Périodicité && Créneau occupés
-	$("[name='proposedCalendars[]']:checked,[name='affectationCalendars[]']:checked").each(function(){
-		$(this).parent().parent().addClass("sTableRowSelect");
-	});
-	displayPeriodType();
-	timeSlotBusy();
 });
 
 ////	Gère l'affichage de la périodicité
 function displayPeriodType()
 {
 	//Réinitialise les options de périodicité & Affiche au besoin l'options sélectionnée
-	$("[id^=periodTypeOption_").hide();
-	$("#blockPeriodDateEndExceptions").hide();
+	$("#periodOption_weekDay, #periodOption_month, #periodDetails, #periodDateEnd, #periodDateExceptions").hide();
 	if($("[name='periodType']").isEmpty()==false){
-		$("#periodTypeOption_"+$("[name='periodType']").val()).show();
-		$("#blockPeriodDateEndExceptions").show();
+		$("#periodOption_"+$("[name='periodType']").val()).fadeIn();
+		$("#periodDetails, #periodDateEnd, #periodDateExceptions").fadeIn();
 	}
+	//Pré-check si besoin tous les mois
+	if($("[name='periodType']").val()=="month" && $("[name*='periodValues_month']:checked").length==0)  {$("input[name*='periodValues_month']").prop("checked","true");}
 	//Affiche les détails de périodicité (exple : "le 15 du mois")
-	var periodTypeOptionDetails="";
-	if($("[name='periodType']").val()=="month")	{periodTypeOptionDetails="<?= Txt::trad("le") ?> "+$("[name='dateBegin']").val().substr(0,2)+" <?= Txt::trad("CALENDAR_period_month_xdumois") ?> ";}//"le 15 du mois"
-	if($("[name='periodType']").val()=="year")	{periodTypeOptionDetails="<?= Txt::trad("le") ?> "+$("[name='dateBegin']").val().substr(0,5);}//"le 15/10"
-	$("#periodTypeOptionDetails").html(periodTypeOptionDetails);
+	var periodDetails="";
+	if($("[name='periodType']").val()=="month")		{periodDetails="<?= Txt::trad("the") ?> "+$("[name='dateBegin']").val().substr(0,2)+" <?= Txt::trad("CALENDAR_period_dayOfMonth") ?> ";}//"le 15 du mois"
+	else if($("[name='periodType']").val()=="year")	{periodDetails="<?= Txt::trad("the") ?> "+$("[name='dateBegin']").val().substr(0,5);}//"le 15/10"
+	$("#periodDetails").html(periodDetails);
 	//Masque les exceptions de périodicité vides
-	$("[id^='divPeriodDateExceptions']").each(function(){
-		if($("#"+this.id.replace("div","input")).isEmpty())	{$(this).hide();}
+	$("[id^='periodExceptionDiv']").each(function(){
+		if($("#"+this.id.replace("Div","Input")).isEmpty())  {$(this).hide();}
 	});
 }
 
 ////	Supprime une "PeriodDateExceptions"
 function deletePeriodDateExceptions(exceptionCpt)
 {
-	var inputSelector="#inputPeriodDateExceptions"+exceptionCpt;
-	if($(inputSelector).isEmpty() || ($(inputSelector).isEmpty()==false && confirm("<?= Txt::trad("supprimer") ?>?"))){
+	var inputSelector="#periodExceptionInput"+exceptionCpt;
+	if($(inputSelector).isEmpty() || ($(inputSelector).isEmpty()==false && confirm("<?= Txt::trad("delete") ?>?"))){
 		$(inputSelector).val("");
-		$("#divPeriodDateExceptions"+exceptionCpt).hide();
+		$("#periodExceptionDiv"+exceptionCpt).hide();
 	}
 }
 
 ////	Controle occupation créneaux horaires des agendas sélectionnés : en AJAX
 function timeSlotBusy()
 {
-	//"timeSlotBusy()" lancé avec 2 seconde de décallage => pour pas lancer des dixaines de demandes Ajax en même temps si on check/unckeck plusieurs agendas!
-	if(typeof timeSlotLastRequest=="undefined" || (Date.now()-timeSlotLastRequest)>2000)
-	{
-		//dernier lancement de "timeSlotBusy()"
-		timeSlotLastRequest=Date.now();
-		//Lance avec un décalage : le temps que d'éventuels mutiples checks se fassent
-		setTimeout(function(){
-			//Prépare la requete de controle Ajax, avec la liste des Agendas sélectionnés : affectations accessibles en écriture
-			var dateTimeBegin=$("[name='dateBegin']").val()+" "+$("[name='timeBegin']").val();
-			var dateTimeEnd=$("[name='dateEnd']").val()+" "+$("[name='timeEnd']").val();
-			if(dateTimeBegin.length>0 && dateTimeEnd.length>0)
-			{
-				var ajaxUrl="?ctrl=calendar&action=timeSlotBusy&dateTimeBegin="+dateTimeBegin+"&dateTimeEnd="+dateTimeEnd+"&_evtId=<?= $curObj->_id ?>&targetObjects[calendar]=";
-				$("[name='proposedCalendars[]']:checked,[name='affectationCalendars[]']:checked").each(function(){ ajaxUrl+=this.value+"-"; });
-				//Lance le controle Ajax et renvoie les agendas où le créneau est occupé
-				$.ajax(ajaxUrl).done(function(ajaxResult){
-					if(ajaxResult.length>0)	{$("#timeSlotBusy").fadeIn();  $(".vTimeSlotBusyTable").html(ajaxResult); }
-					else					{$("#timeSlotBusy").hide();}
-				});
-			}
-		}, 1000);
-	}
+	//Lance la requête ajax, avec un "timeout"
+	if(typeof timeoutTimeSlotBusy!="undefined")  {clearTimeout(timeoutTimeSlotBusy);}//Pas de cumul de Timeout
+	timeoutTimeSlotBusy=setTimeout(function(){
+		//Prépare la requete de controle Ajax, avec la liste des Agendas sélectionnés : affectations accessibles en écriture
+		if($("[name='dateBegin']").isEmpty()==false && $("[name='dateEnd']").isEmpty()==false)
+		{
+			//Init l'url, avec le créneau horaire et les agendas concernés
+			var ajaxUrl="?ctrl=calendar&action=timeSlotBusy"+
+						"&dateTimeBegin="+encodeURIComponent($("[name='dateBegin']").val()+" "+$("[name='timeBegin']").val())+
+						"&dateTimeEnd="+encodeURIComponent($("[name='dateEnd']").val()+" "+$("[name='timeEnd']").val())+
+						"&_evtId=<?= $curObj->_id ?>&targetObjects[calendar]=";
+			$(".vCalendarInput:checked,.vCalendarInputProposition:checked").each(function(){ ajaxUrl+=this.value+"-"; });
+			//Lance le controle Ajax et renvoie les agendas où le créneau est occupé
+			$.ajax(ajaxUrl).done(function(txtResult){
+				if(txtResult.length>0)	{$("#timeSlotBusy").fadeIn();  $(".vTimeSlotBusyTable").html(txtResult); }
+				else					{$("#timeSlotBusy").hide();}
+			});
+		}
+	}, 1000);
 }
 
 ////	Contrôle du formulaire
 function formControl()
 {
-	//Controle le nombre d'affectations
-	if($("[name='proposedCalendars[]']:checked").isEmpty() && $("[name='affectationCalendars[]']:checked").isEmpty())
-		{displayNotif("<?= Txt::trad("CALENDAR_verif_nb_agendas") ?>");  return false;}
-	//Controle final (champs obligatoires, affectations/droits d'accès, etc)
-	return finalFormControl();
+	//Controle le nombre d'affectations aux agendas
+	if($(".vCalendarInput:checked,.vCalendarInputProposition:checked").isEmpty())  {notify("<?= Txt::trad("CALENDAR_verifCalNb") ?>"); return false;}
+	//Controle final (champs obligatoires, etc)
+	return mainFormControl();
 }
 </script>
 
 <style>
-#blockDescription						{margin-top:20px; <?= empty($curObj->description)?"display:none;":null ?>}
-.vEvtOptions							{margin-left:15px; margin-top:5px; display:inline-block;}
-#evtOptions .vEvtOptions:first-child	{margin-left:0px;}
-.vEvtOptions select						{max-width:170px;}
+#blockDescription						{margin-top:15px; <?= empty($curObj->description)?"display:none;":null ?>}
+#eventDetails							{text-align:center;}
+.vEventDetails							{display:inline-block; margin:10px;}
+.vContentVisibleTitle					{text-align:left;}
+
 /*PÉRIODICITÉ*/
-#periodTypeOptionDetails				{font-size:90%; text-decoration:underline;}
-[id^='periodTypeOption_']				{display:none; margin-top:15px;}
-#periodTypeOption_monthDay, #periodTypeOption_month	{text-align:left;}
-.vPeriodTypeOptionVal								{display:inline-block; margin-left:10px;}
-#periodTypeOption_monthDay .vPeriodTypeOptionVal	{width:35px; font-size:90%;}
-#periodTypeOption_month .vPeriodTypeOptionVal		{width:22%;}
-#blockPeriodDateEndExceptions			{display:none; margin-top:10px; text-align:center;}
-#blockPeriodDateExceptions				{display:inline-block; vertical-align:middle;}
-[id^='divPeriodDateExceptions']			{margin-top:5px;}
-#blockPeriodDateEnd						{display:inline-block; margin-left:15px;}
-/*EVTOPTIONS*/
-.vEventDetails .hrGradient	{margin:10px 0px 10px 0px;}/*surcharge*/
-#evtOptions					{text-align:center;}
-.vContentVisibleTitle		{text-align:left;}
+#periodOption_weekDay, #periodOption_month, #periodDetails, #periodDateEnd, #periodDateExceptions	{display:none; margin-top:15px; margin-left:20px; text-align:left; vertical-align:middle;}
+#periodOption_weekDay>div, #periodOption_month>div													{display:inline-block; width:24%; padding:3px;}
+#periodDateExceptions>div				{margin:5px;}
+#periodDetails							{text-decoration:underline;}
+
 /*AFFECTATION AUX AGENDAS*/
-.vAffectationCalendars		{max-height:300px; overflow-y:auto;}
-.vAffectationBlock			{display:inline-block; width:32%; padding-left:5px; font-size:90%;}
-.vAffectationBlock img		{max-height:18px;}
-.vAffectationBlockTable		{display:table; width:100%;}
-.vAffectationBlockCell		{display:table-cell; vertical-align:middle;}
-.vAffectationBlockCell:first-child	{width:50px; text-align:right;}
-[name='proposedCalendars[]']{margin:2px;}
-[name='groupList[]']		{display:none;}
+.lightboxBlock.vCalAffectOptions		{padding:4px 0px 4px 6px;}/*surcharge*/
+#calsAffectDiv							{max-height:135px; overflow-y:auto;}
+.vCalAffectBlock						{display:inline-block; width:48%; margin:2px; margin-right:5px; border-radius:3px;}
+.vCalAffectBlock .vCalendarInput		{display:none;}
+.vCalAffectBlock label					{display:inline-block; width:75%; padding:5px 3px 5px 3px;}
+.vCalAffectBlock img					{max-height:16px;}
+.vCalAffectBlockBis label				{width:100%;}
+.vCalAffectProposition					{display:none; float:right; padding:3px; background:#ddd;}
+.vCalAffectProposition input			{margin-right:2px;}
+input[name='calUsersGroup[]']			{display:none;}
+
+/*GUESTS : MASQUE LES OPTIONS AVANCEES & LE MENU D'AFFECTATION AUX AGENDAS (conserve en "background" l'agenda présélectionné pour l'enregistrement du formulaire)*/
+<?php if(Ctrl::$curUser->isUser()==false){ ?>
+.vEventDetailsAdvanced, .vCalAffectOptions	{display:none;}
+<?php } ?>
+
 /*DÉTAILS SUR L'AFFECTATION*/
-#timeSlotBusy				{display:none; font-size:90%;}
-.vTimeSlotBusyTable			{display:table; margin-top:6px;}
-.vTimeSlotBusyRow			{display:table-row;}/*cf. "actionTimeSlotBusy()"*/
-.vTimeSlotBusyCell			{display:table-cell; padding:4px; vertical-align:middle;}/*idem*/
+#timeSlotBusy							{display:none;}
+.vTimeSlotBusyTable						{display:table; margin-top:6px;}
+.vTimeSlotBusyRow						{display:table-row;}/*cf. "actionTimeSlotBusy()"*/
+.vTimeSlotBusyCell						{display:table-cell; padding:4px; vertical-align:middle;}/*idem*/
+
+/*RESPONSIVE FANCYBOX (440px)*/
+@media screen and (max-width:440px){
+	select[name="periodType"], select[name="contentVisible"]	{margin-top:10px;}
+	.vCalAffectBlock											{width:96%;}
+	.vCalAffectBlock label										{padding:8px 3px 8px 3px;}
+	#periodOption_weekDay>div, #periodOption_month>div			{width:33%;}
+}
 </style>
 
-<form action="index.php" method="post" onsubmit="return formControl()" enctype="multipart/form-data">
+<form action="index.php" method="post" onsubmit="return formControl()" enctype="multipart/form-data" class="lightboxContent">
+	<!--TITRE RESPONSIVE-->
+	<?php echo $curObj->editRespTitle("CALENDAR_addEvt"); ?>
+	
+	<!--PAS AUTEUR DE L'EVT : "VOUS N'AVEZ PAS D'ACCES AUX DETAILS"-->
+	<?php if($curObj->fullRight()==false)  {echo "<div class='infos'><img src='app/img/info.png'> ".Txt::trad("CALENDAR_editLimit")."</div><br>";} ?>
 
-	<!--PAS D'ACCES AUX D2TAILS A L'EVT : MESSAGE-->
-	<?php if($curObj->fullRight()==false){ ?>
-		<div class="labelInfos"><img src="app/img/infoSmall.png"> <?= Txt::trad("CALENDAR_edit_limite") ?></div><br>
-	<?php } ?>
+	<div id="eventDetails">
 
-	<!--TITRE & DESCRIPTION (EDITOR)-->
-	<div class="vEventDetails">
-		<input type="text" name="title" value="<?= $curObj->title ?>" class="editInputTextBig" placeholder="<?= Txt::trad("title") ?>">
-		<img src="app/img/description.png" class="sLink" title="<?= Txt::trad("description") ?>" onclick="$('#blockDescription').slideToggle(200)">
+		<!--TITRE & DESCRIPTION (EDITOR)-->
+		<input type="text" name="title" value="<?= $curObj->title ?>" class="textBig" placeholder="<?= Txt::trad("title") ?>">
+		<img src="app/img/description.png" class="sLink" title="<?= Txt::trad("description") ?>" onclick="$('#blockDescription').slideToggle()">
 		<div id="blockDescription">
 			<textarea name="description" placeholder="<?= Txt::trad("description") ?>"><?= $curObj->description ?></textarea>
 		</div>
+		<br><br>
+
+		<!--DATE DEBUT & FIN-->
+		<span class="vEventDetails">
+			<input type="text" name="dateBegin" class="dateBegin" value="<?= Txt::formatDate($curObj->dateBegin,"dbDatetime","inputDate") ?>" placeholder="<?= Txt::trad("begin") ?>">
+			<input type="text" name="timeBegin" class="timeBegin" value="<?= Txt::formatDate($curObj->dateBegin,"dbDatetime","inputHM") ?>" placeholder="H:m">
+			&nbsp; <img src="app/img/arrowRight.png"> &nbsp; 
+			<input type="text" name="dateEnd" class="dateEnd" value="<?= Txt::formatDate($curObj->dateEnd,"dbDatetime","inputDate") ?>" placeholder="<?= Txt::trad("end") ?>">
+			<input type="text" name="timeEnd" class="timeEnd" value="<?= Txt::formatDate($curObj->dateEnd,"dbDatetime","inputHM") ?>" placeholder="H:m">
+		</span>
+		
+		<!--CATEGORIE-->
+		<span class="vEventDetails">
+			<?= Txt::trad("CALENDAR_category") ?>
+			<select name="_idCat">
+				<option value=""></option>
+				<?php foreach(MdlCalendarEventCategory::getCategories() as $tmpCat){ ?>
+				<option value="<?= $tmpCat->_id ?>" data-color="<?= $tmpCat->color ?>"><?= $tmpCat->title ?></option>
+				<?php } ?>
+			</select>
+		</span>
+		
+		<!--IMPORTANT-->
+		<span class="vEventDetails vEventDetailsAdvanced">
+			<?= Txt::trad("important") ?>
+			<select name="important">
+				<option value="0"><?= Txt::trad("no") ?></option>
+				<option value="1" data-color="#900"><?= Txt::trad("yes") ?></option>
+			</select>
+		</span>
+	
+		<!--VISIBILITE-->
+		<span class="vEventDetails vEventDetailsAdvanced">
+			<select name="contentVisible" title="<div class='vContentVisibleTitle'><?= Txt::trad("CALENDAR_visibilityInfo") ?></div>">
+				<option value="public"><?= Txt::trad("CALENDAR_visibilityPublic") ?></option>
+				<option value="public_cache"><?= Txt::trad("CALENDAR_visibilityPublicHide") ?></option>
+				<option value="prive"><?= Txt::trad("CALENDAR_visibilityPrivate") ?></option>
+			</select>
+		</span>
+	
+		<!--PERIODICITE-->
+		<span class="vEventDetails vEventDetailsAdvanced">
+			<select name="periodType">
+				<option value=""><?= Txt::trad("CALENDAR_noPeriodicity") ?></option>
+				<option value="weekDay"><?= Txt::trad("CALENDAR_period_weekDay") ?></option>
+				<option value="month"><?= Txt::trad("CALENDAR_period_month") ?></option>
+				<option value="year"><?= Txt::trad("CALENDAR_period_year") ?></option>
+			</select>
+		</span>
+
+		<!--PERIODICITE: DETAIL (exple: "le 15 du mois"-->
+		<div id="periodDetails">&nbsp;</div>
+
+		<!--PERIODICITE: JOURS DE LA SEMAINE-->
+		<div id="periodOption_weekDay">
+			<?php
+			for($cpt=1; $cpt<=7; $cpt++){
+				$periodValueChecked=($curObj->periodType=="weekDay" && in_array($cpt,$tabPeriodValues))  ?  "checked"  :  null;
+				echo "<div>
+						<input type='checkbox' name='periodValues_weekDay[]' value='".$cpt."' id='periodValues_weekDay".$cpt."' ".$periodValueChecked." >
+						<label for='periodValues_weekDay".$cpt."'>".Txt::trad("day_".$cpt)."</label>
+					  </div>";
+			}
+			?>
+		</div>
+
+		<!--PERIODICITE: MOIS DE L'ANNEE-->
+		<div id="periodOption_month">
+			<?php
+			for($cpt=1; $cpt<=12; $cpt++){
+				$periodValueChecked=($curObj->periodType=="month" && in_array($cpt,$tabPeriodValues))  ?  "checked"  :  null;
+				echo "<div>
+						<input type='checkbox' name='periodValues_month[]' value='".$cpt."' id='periodValues_month".$cpt."' ".$periodValueChecked." >
+						<label for='periodValues_month".$cpt."'>".Txt::trad("month_".$cpt)."</label>
+					  </div>";
+			}
+			?>
+		</div>
+
+		<!--PERIODICITE: FIN-->
+		<div id="periodDateEnd">
+			<?= Txt::trad("CALENDAR_periodDateEnd") ?> <input type="text" name="periodDateEnd" class="dateInput" value="<?= Txt::formatDate($curObj->periodDateEnd,"dbDate","inputDate") ?>">
+		</div>
+	
+		<!--EXCEPTIONS DE PERIODICITE-->
+		<div id="periodDateExceptions">
+			<span class="sLink" onclick="$('[id^=periodExceptionDiv]:hidden').first().show()"><?= Txt::trad("CALENDAR_periodException") ?> <img src="app/img/plusSmall.png"></span>
+			<?php
+			//Liste des exceptions (10 maxi)
+			for($cpt=1; $cpt<=10; $cpt++){
+				echo "<div id='periodExceptionDiv".$cpt."'>
+						<input type='text' name='periodDateExceptions[]' value=\"".(isset($periodDateExceptions[$cpt])?$periodDateExceptions[$cpt]:null)."\" class='dateInput' id='periodExceptionInput".$cpt."'>
+						<img src='app/img/delete.png' title=\"".Txt::trad("delete")."\" class='sLink' onclick=\"deletePeriodDateExceptions(".$cpt.");\">
+					  </div>";
+			}
+			?>
+		</div>
 	</div>
 
-	<fieldset class="fieldsetCenter fieldsetMarginTop sBlock vEventDetails">
-		<!--DATE DEBUT & FIN-->
-		<input type="text" name="dateBegin" class="dateBegin" value="<?= Txt::formatDate($curObj->dateBegin,"dbDatetime","inputDate") ?>" placeholder="<?= Txt::trad("debut") ?>">
-		<input type="text" name="timeBegin" class="timeBegin" value="<?= Txt::formatDate($curObj->dateBegin,"dbDatetime","inputHM") ?>" placeholder="H:m">
-		<img src="app/img/arrowRight.png">
-		<input type="text" name="dateEnd" class="dateEnd" value="<?= Txt::formatDate($curObj->dateEnd,"dbDatetime","inputDate") ?>" placeholder="<?= Txt::trad("fin") ?>">
-		<input type="text" name="timeEnd" class="timeEnd" value="<?= Txt::formatDate($curObj->dateEnd,"dbDatetime","inputHM") ?>" placeholder="H:m">
-		<!--EVENEMENT PERIODIQUE (pas pour les guests)-->
-		<span id="evtPeriodType">
-			<span class="vEvtOptions">
-				<?= Txt::trad("CALENDAR_periodicite") ?>
-				<select name="periodType">
-					<option value=""><?= Txt::trad("non") ?></option>
-					<option value="weekDay"><?= Txt::trad("CALENDAR_period_weekDay") ?></option>
-					<option value="month"><?= Txt::trad("CALENDAR_period_month") ?></option>
-					<option value="monthDay"><?= Txt::trad("CALENDAR_period_monthDay") ?></option>
-					<option value="year"><?= Txt::trad("CALENDAR_period_year") ?></option>
-				</select>
-			</span>
-		</span>
-		<!--DETAIL DE PERIODICITE (exple: "le 15 du mois"-->
-		<span id="periodTypeOptionDetails"></span>
-		<!--JOURS DE LA SEMAINE-->
-		<div id="periodTypeOption_weekDay">
-			<?php for($cpt=1; $cpt<=7; $cpt++){ ?>
-			<div class="vPeriodTypeOptionVal">
-				<input type="checkbox" name="periodValues_weekDay[]" value="<?= $cpt ?>" id="periodValues_weekDay<?= $cpt ?>" <?= ($curObj->periodType=="weekDay" && in_array($cpt,$tabPeriodValues))?"checked":null ?> >
-				<label for="periodValues_weekDay<?= $cpt ?>"><?= Txt::trad("jour_".$cpt) ?></label>
-			</div>
-			<?php } ?>
-		</div>
-		<!--JOURS DU MOIS-->
-		<div id="periodTypeOption_monthDay">
-			<?php for($cpt=1; $cpt<=31; $cpt++){ ?>
-			<div class="vPeriodTypeOptionVal">
-				<input type="checkbox" name="periodValues_monthDay[]" value="<?= $cpt ?>" id="periodValues_monthDay<?= $cpt ?>" <?= ($curObj->periodType=="monthDay" && in_array($cpt,$tabPeriodValues))?"checked":null ?>>
-				<label for="periodValues_monthDay<?= $cpt ?>"><?= $cpt ?></label>
-			</div>
-			<?= ($cpt==10 || $cpt==20)?"<br>":null ?>
-			<?php } ?>
-		</div>
-		<!--MOIS DE L'ANNEE-->
-		<div id="periodTypeOption_month">
-			<?php for($cpt=1; $cpt<=12; $cpt++){ ?>
-			<div class="vPeriodTypeOptionVal">
-				<input type="checkbox" name="periodValues_month[]" value="<?= $cpt ?>" id="periodValues_month<?= $cpt ?>" <?= ($curObj->periodType=="month" && in_array($cpt,$tabPeriodValues))?"checked":null ?>>
-				<label for="periodValues_month<?= $cpt ?>"><?= Txt::trad("mois_".$cpt) ?></label>
-			</div>
-			<?php } ?>
-		</div>
-		<!--FIN DE PERIODICITE & EXCEPTIONS DE PERIODICITE (10 maxi)-->
-		<div id="blockPeriodDateEndExceptions">
-			<div id="blockPeriodDateExceptions">
-				<span class="vEvtOptions">
-					<span class="sLink" onclick="$('[id^=divPeriodDateExceptions]:hidden').first().show()"><?= Txt::trad("CALENDAR_exception_periodicite") ?> <img src="app/img/plusSmall.png"></span>
-					<?php for($cpt=1; $cpt<=10; $cpt++){ ?>
-					<div id="divPeriodDateExceptions<?= $cpt ?>">
-						<input type="text" name="periodDateExceptions[]" value="<?= isset($periodDateExceptions[$cpt])?$periodDateExceptions[$cpt]:null ?>" class="dateInput" id="inputPeriodDateExceptions<?= $cpt ?>">
-						<img src="app/img/delete.png" title="<?= Txt::trad("supprimer") ?>" class="sLink" onclick="deletePeriodDateExceptions(<?= $cpt ?>)">
-					</div>
-					<?php } ?>
-				</span>
-			</div>
-			<div id="blockPeriodDateEnd">
-				<?= Txt::trad("CALENDAR_periodDateEnd") ?> <input type="text" name="periodDateEnd" class="dateInput" value="<?= Txt::formatDate($curObj->periodDateEnd,"dbDate","inputDate") ?>">
-			</div>
-		</div>
-		<hr class="hrGradient">
-		<!--IMPORTANT / VISIBILITE / CATEGORIE-->
-		<div id="evtOptions">
-			<span class="vEvtOptions">
-				<?= Txt::trad("CALENDAR_categorie") ?>
-				<select name="_idCat">
-					<option value=""></option>
-					<?php foreach(MdlCalendarEventCategory::getCategories() as $tmpCat){ ?>
-					<option value="<?= $tmpCat->_id ?>" data-color="<?= $tmpCat->color ?>"><?= $tmpCat->title ?></option>
-					<?php } ?>
-				</select>
-			</span>
-			<span class="vEvtOptions">
-				<?= Txt::trad("important") ?>
-				<select name="important">
-					<option value="0"><?= Txt::trad("non") ?></option>
-					<option value="1" data-color="#900"><?= Txt::trad("oui") ?></option>
-				</select>
-			</span>
-			<span class="vEvtOptions">
-				<?= Txt::trad("CALENDAR_visibilite") ?>
-				<select name="contentVisible" title="<div class='vContentVisibleTitle'><?= Txt::trad("CALENDAR_visibilite_info") ?></div>">
-					<option value="public"><?= Txt::trad("CALENDAR_visibilite_public") ?></option>
-					<option value="public_cache"><?= Txt::trad("CALENDAR_visibilite_public_cache") ?></option>
-					<option value="prive"><?= Txt::trad("CALENDAR_visibilite_prive") ?></option>
-				</select>
-			</span>
-		</div>
-	</fieldset>
-
-	<!--AFFECTATIONS-->
-	<div class="fieldsetLabel vAffectations"><?= Txt::trad("CALENDAR_agendas_affectations") ?></div>
-	<fieldset class="fieldsetMarginTop sBlock vAffectations">
-		<div class="vAffectationCalendars">
-		<!--LISTE DES AGENDAS-->
+	<!--AFFECTATIONS AUX AGENDAS-->
+	<div class="lightboxBlockTitle vCalAffectOptions"><?= Txt::trad("CALENDAR_calendarAffectations") ?></div>
+	<div class="lightboxBlock vCalAffectOptions">
 		<?php
-		foreach(MdlCalendar::affectationCalendars() as $tmpCalendar){
-			if(!empty($tmpType) && $tmpType!=$tmpCalendar->type)	{echo "<hr class='hrGradient'>";}
-			$tmpType=$tmpCalendar->type;
-		?>
-			<div class="vAffectationBlock sTableRow">
-				<div class="vAffectationBlockTable">
-					<div class="vAffectationBlockCell">
-						<?php if($tmpCalendar->reinitAffect==true){ ?><input type="hidden" name="reinitAffect[]" value="<?= $tmpCalendar->_id ?>"><?php } ?>
-						<?php if($tmpCalendar->isMyPerso()==false){ ?><label for="proposedCalendars<?= $tmpCalendar->_id ?>">?</label><input type="checkbox" name="proposedCalendars[]" value="<?= $tmpCalendar->_id ?>" <?= $tmpCalendar->checkProposed." ".$tmpCalendar->disablePropose ?> id="proposedCalendars<?= $tmpCalendar->_id ?>" title="<?= Txt::trad("CALENDAR_input_proposer")?>"><?php } ?>
-						<input type="checkbox" name="affectationCalendars[]" value="<?= $tmpCalendar->_id ?>" <?= $tmpCalendar->checkAffectation." ".$tmpCalendar->disableAffect ?> id="affectationCalendars<?= $tmpCalendar->_id ?>" data-type="<?= $tmpCalendar->type ?>" data-idUser="<?= $tmpCalendar->_idUser ?>" title="<?= Txt::trad("CALENDAR_input_affecter")?>">
-					</div>
-					<div class="vAffectationBlockCell">
-						<label for="affectationCalendars<?= $tmpCalendar->_id ?>" title="<?= $tmpCalendar->tooltip ?>"><?= $tmpCalendar->title ?></label>
-					</div>
-				</div>
-			</div>
-		<?php } ?>
-		</div>
-		<?php
-		//GROUPES d'UTILISATEURS
-		if(!empty($userGroups))  {echo "<hr>";}
-		foreach($userGroups as $tmpGroup){
-			echo "<div class='vAffectationBlock sLink' title=\"".Txt::trad("select_deselect")." :<br>".$tmpGroup->usersLabel."\">
-					<label for='box".$tmpGroup->_targetObjId."'><img src='app/img/user/userGroup.png'> ".$tmpGroup->title."</label>
-					<input type='checkbox' name=\"groupList[]\" value=\"".implode(",",$tmpGroup->userIds)."\" id='box".$tmpGroup->_targetObjId."'>
+		echo "<div id='calsAffectDiv'>";
+		////	AGENDAS DE RESSOURCES & AGENDAS PERSONNELS
+		foreach($affectationCalendars as $tmpCal)
+		{
+			//Nom de l'input
+			$calInputName=($tmpCal->inputType=="affectation")  ?  "affectationCalendars[]"  :  "propositionCalendars[]";
+			//Réinit l'affectation/proposition après validation du form?
+			$moreInputs=($tmpCal->reinitCalendarInput==true)  ?  "<input type='hidden' name='reinitCalendars[]' value=\"".$tmpCal->_id."\">"  :  null;
+			//Agenda d'user ou de ressource
+			if($tmpCal->type=="user")	{$calIcon="typeUser.png";		$calIdUser="data-idUser=\"".$tmpCal->_idUser."\"";}
+			else						{$calIcon="typeRessource.png";	$calIdUser=null;}
+			//Astérisque "*" sur les agendas non-modifiables || proposition
+			if($tmpCal->isDisabled!=null)				{$tmpCal->title.=" &#42;&#42;";}
+			elseif($tmpCal->inputType=="proposition")	{$tmpCal->title.=" &#42;";}
+			//Affiche l'option de proposition d'événement (en plus du champ principal avec le label)
+			if($tmpCal->inputType=="affectation" && $tmpCal->isMyPerso()==false){
+				if($curObj->isNew()==false && in_array($tmpCal,$curObj->affectedCalendars(false)))  {$propositionShow="style='display:block;'"; $propositionChecked="checked"; $tmpCal->isChecked=null;}//Proposition pré-sélectionnée : on l'affiche et décoche l'input principal
+				else																				{$propositionShow=$propositionChecked=null;}														//Sinon on masque par défaut l'option de proposition
+				$moreInputs.="<div class='vCalAffectProposition' ".$propositionShow." title=\"".Txt::trad("CALENDAR_proposeEvtTooltipBis")."\"><input type='checkbox' name='propositionCalendars[]' value=\"".$tmpCal->_id."\" ".$propositionChecked." class='vCalendarInputProposition'><img src='app/img/calendar/propose.png'></div>";
+			}
+			//Affiche l'input d'affectation/proposition
+			echo "<div class='vCalAffectBlock sTableRow'>
+					<input type='checkbox' name='".$calInputName."' value=\"".$tmpCal->_id."\" id=\"box".$tmpCal->_targetObjId."\" class='vCalendarInput' ".$tmpCal->isChecked." ".$tmpCal->isDisabled." ".$calIdUser.">
+					<label for=\"box".$tmpCal->_targetObjId."\" class='noTooltip' title=\"".$tmpCal->tooltip."\"><img src=\"app/img/calendar/".$calIcon."\"> ".$tmpCal->title."</label>
+					".$moreInputs."
 				  </div>";
 		}
+		////	TOUT SELECTIONNER/DESELECTIONNER  OU SELECTION D'UN GROUPE D'UTILISATEURS
+		if(count($affectationCalendars)>2)
+		{
+			echo "<hr><div class='vCalAffectBlock vCalAffectBlockBis sTableRow' id='calsAffectSwitch'><label><img src='app/img/check.png'> ".Txt::trad("selectUnselectAll")."</label></div>";
+			foreach($curSpaceUserGroups as $tmpGroup){
+				echo "<div class='vCalAffectBlock vCalAffectBlockBis sTableRow' title=\"".Txt::trad("selectUnselect")." :<br>".$tmpGroup->usersLabel."\">
+						<input type='checkbox' name=\"calUsersGroup[]\" value=\"".implode(",",$tmpGroup->userIds)."\" id='calUsersGroup".$tmpGroup->_targetObjId."' onchange=\"userGroupSelect(this,'#calsAffectDiv');\">
+						<label for='calUsersGroup".$tmpGroup->_targetObjId."'><img src='app/img/user/userGroup.png'> ".$tmpGroup->title."</label>
+					  </div>";
+			}
+		}
+		echo "</div>";
 		?>
 		<!--CRENEAU HORAIRE OCCUPE?-->
 		<div id="timeSlotBusy" class="sAccessWriteLimit">
-			<hr><?= Txt::trad("CALENDAR_creneau_occupe") ?>
+			<hr><?= Txt::trad("CALENDAR_busyTimeslot") ?>
 			<div class="vTimeSlotBusyTable"></div>
 		</div>
-	</fieldset>
+	</div>
 
 	<!--MENU COMMUN-->
-	<?= $curObj->menuEditValidate() ?>
+	<?= $curObj->menuEdit() ?>
 </form>

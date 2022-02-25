@@ -1,28 +1,34 @@
-<script type="text/javascript">
-lightboxWidth(650);//Resize
+<script>
+lightboxSetWidth(650);//Resize
 </script>
 
 <style>
 .vEventLine		{display:table; width:100%; margin:5px;}
-.vEventDate		{display:table-cell; width:200px;}
-.vEventTitle	{display:table-cell;}
-.vEventOptions	{display:table-cell; width:50px;}
+.vEventLine>div	{display:table-cell;}
+.vEventDate		{width:200px;}
+.vEventOptions	{width:50px;}
+
+/*RESPONSIVE FANCYBOX (440px)*/
+@media screen and (max-width:440px){
+	.vEventDate		{width:80px;}
+}
 </style>
 
-<div class="fancyboxContent">
-	<div class="lightboxObjTitle"><?= Txt::trad("CALENDAR_evt_proprio") ?></div>
-	<hr class="hrGradient hrMargins">
+
+<div class="lightboxContent">
+	<div class="lightboxTitle"><?= Txt::trad("CALENDAR_evtAutor") ?></div>
+
 	<!--LISTE DES EVT-->
 	<?php foreach($myEvents as $tmpEvent){ ?>
 	<div class="vEventLine sTableRow" title="<?= Txt::displayDate($tmpEvent->dateBegin,"full",$tmpEvent->dateEnd) ?><br><?= $tmpEvent->description ?>">
 		<div class="vEventDate"><?= Txt::displayDate($tmpEvent->dateBegin,"normal",$tmpEvent->dateEnd) ?></div>
-		<div class="vEventTitle"><?= $tmpEvent->title ?></div>
+		<div><?= $tmpEvent->title ?></div>
 		<div class="vEventOptions">
 			<img src="app/img/edit.png" class="sLink" onclick="lightboxOpen('<?= $tmpEvent->getUrl("edit") ?>')">
-			<img src="app/img/delete.png" class="sLink" onclick="if(confirm('<?= Txt::trad("confirmDelete",true) ?>')) {lightboxClose(true,'<?= $tmpEvent->getUrl("delete") ?>');}">
+			<img src="app/img/delete.png" class="sLink" onclick="if(confirm('<?= Txt::trad("confirmDelete",true) ?>')) {lightboxClose('<?= $tmpEvent->getUrl("delete") ?>');}">
 		</div>
 	</div>
 	<?php } ?>
 	<!--AUCUN EVT-->
-	<?php if(empty($myEvents)){echo "<h3>".Txt::trad("CALENDAR_aucun_evt")."</h3>";} ?>
+	<?php if(empty($myEvents)){echo "<h3>".Txt::trad("CALENDAR_noEvt")."</h3>";} ?>
 </div>

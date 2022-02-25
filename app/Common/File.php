@@ -1,6 +1,14 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
- * Class de gestion des fichiers
+ * Class des fichiers
  */
 class File
 {
@@ -8,8 +16,8 @@ class File
 	const sizeGo=1073741824;
 	const sizeMo=1048576;
 	const sizeKo=1024;
-	//Taille maxi de la totalité des fichiers attachés aux mails (10Mo)
-	const mailMaxFilesSize=10485760;
+	//Taille maxi de la totalité des fichiers attachés aux mails (20Mo)
+	const mailMaxFilesSize=20971520;
 	//init les types de fichiers
 	private static $_fileTypes=null;
 
@@ -24,74 +32,7 @@ class File
 		if(is_dir($path) && $chmodResult==true){
 			//chmod sur les fichiers d'un dossier
 			foreach(scandir($path) as $tmpFileName){
-				if($tmpFileName!='.' && $tmpFileName!='..')  {self::setChmod($path."/".$tmpFileName);}
-			}
-		}
-	}
-
-	/*
-	 * Modif du "config.inc.php"
-	 */
-	public static function updateConfigFile($tabAddConst=null, $tabDeleteConst=null)
-	{
-		// FICHIER ACCESSIBLE EN ÉCRITURE?
-		$configFilePath=PATH_DATAS."config.inc.php";
-		if(!is_file($configFilePath) || !is_writable($configFilePath))    {throw new Exception("config.inc.php : the file doesn't exist or is not writable");}
-		else
-		{
-			//Récupère le fichier sous forme de tableau
-			$configTab=file($configFilePath);
-			if(count($configTab)>1)
-			{
-				$modifiedConstants=array();
-				// Parcourt chaque ligne/constante du fichier
-				foreach($configTab as $lineKey => $lineValue)
-				{
-					// ON MODIFIE LE NOM DE LA CONSTANTE?
-					if(stristr($lineValue,"limite_nb_utils")){
-						$lineValue=str_replace("limite_nb_utils","limite_nb_users",$lineValue);
-					}
-					// SUPPRIME LA CONSTANTE COURANTE?
-					if(is_array($tabDeleteConst)){
-						foreach($tabDeleteConst as $constantName){
-							if(!empty($constantName) && stristr($lineValue,'"'.$constantName.'"'))	{$lineValue="";}
-						}
-					}
-					// MODIFIE LA CONSTANTE COURANTE?
-					if(is_array($tabAddConst))
-					{
-						foreach($tabAddConst as $constantName => $constantValue)
-						{
-							if(stristr($lineValue,$constantName)){
-								if(!preg_match("/(true|false)$/i",$lineValue))  {$constantValue="\"".$constantValue."\"";}//valeurs non booléennes : entre guillemet
-								$lineValue="define(\"".$constantName."\", ".$constantValue.");\n";
-								$modifiedConstants[]=$constantName;//Ajoute dans au listing.. pour la suite
-							}
-						}
-					}
-					// SUPPRIME AU BESOIN LA BALISE PHP DE FERMETURE (INUTILE ET PEUT POSER PB LORS D'AJOUT DE CONSTANTE)
-					$lineValue=str_replace("?>","",$lineValue);
-					// ENREGISTRE LA VALEUR FINALE DE LA LIGNE !!
-					$configTab[$lineKey]=$lineValue;
-				}
-				//AJOUTE LES CONSTANTES DE  $tabAddConst  QUI NE SONT PAS ENCORE PRÉSENTES DANS LE FICHIER (QUI NE SONT PAS PASSES PAR L'EPREUVE DE LA MODIF)
-				if(is_array($tabAddConst))
-				{
-					foreach($tabAddConst as $constantName => $constantValue)
-					{
-						//contante pas modifiée? -> on l'ajoute au fichier!
-						if(!in_array($constantName,$modifiedConstants)){
-							if(!preg_match("/(true|false)$/i",$lineValue))  {$constantValue="\"".$constantValue."\"";}//valeurs non booléennes : entre guillemet
-							$configTab[]="define(\"".$constantName."\", ".$constantValue.");\n";
-						}
-					}
-				}
-
-				// ON REMPLACE LE FICHIER !
-				$fileContent=implode("", $configTab);
-				$fp=fopen($configFilePath, "w");
-				fwrite($fp, $fileContent);
-				fclose($fp);
+				if(in_array($tmpFileName,['.','..'])==false)  {self::setChmod($path."/".$tmpFileName);}
 			}
 		}
 	}
@@ -109,48 +50,57 @@ class File
 	 */
 	public static function fileTypes($typeKey)
 	{
+		//Init les types de fichiers en fonction de leur extension
 		if(static::$_fileTypes===null)
 		{
-			//Types de fichiers en fonction de leur extension
 			static::$_fileTypes=array(
-				"image"=>array("jpg","jpeg","jpe","png","gif","bmp","wbmp","tif","tiff","psd","eps","ai","ps","svg"),
+				"image"=>array("jpg","jpeg","png","gif","bmp","wbmp","tif","tiff","svg"),
 				"imageBrowser"=>array("jpg","jpeg","png","gif"),
-				"imageResize"=>array("jpg","jpeg","png","gif"),//idem
-				"word"=>array("doc","docx","docm","dotx","dotm"),
-				"excel"=>array("xls","xlsx","xlsm","xltx","xltm"),
-				"powerpoint"=>array("ppt","pptx","pptm","potx","potm","pps","ppsx"),
-				"ootext"=>array("odt","ott","sxw","stw"),
-				"oocalc"=>array("ods","ots","sxc","stc"),
-				"oopresent"=>array("odp","otp","sxi","sti"),
-				"archive"=>array("zip","rar","7z","gz","tgz","gz","tar","ace","cab","iso","jar","nrg"),
+				"imageResize"=>array("jpg","jpeg","png"),
+				"textEditor"=>array("doc","docx","odt","sxw"),
+				"text"=>array("txt","text","rtf"),
 				"pdf"=>array("pdf"),
-				"text"=>array("text","txt","rtf"),
-				"mp3"=>array("mp3"),
-				"audio"=>array("mp3","flac","oga","wma","wav","cda","ra","ram","aac","m4r","mid","aif"),
+				"calc"=>array("xls","xlsx","ods","sxc"),
+				"presentation"=>array("ppt","pptx","pps","ppsx","odp","sxi"),
+				"archive"=>array("zip","rar","7z","tar","gz","tgz","iso"),
 				"flash"=>array("swf"),
 				"html"=>array("htm","html"),
-				"web"=>array("htm","html","php","phtml","asp","aspx","jsp","js","css"),
+				"web"=>array("htm","html","js","css","php","asp","jsp"),
 				"autocad"=>array("dwg","dxf"),
-				"videoPlayer"=>array("mp4","webm","ogg","mkv","flv"),
-				"video"=>array("mp4","webm","ogg","mkv","flv","avi","qt","mov","wmv","mpg"),
 				"executable"=>array("exe","bat","dat","dll","msi"),
-				"forbidden"=>array("htaccess","sh","so","bin","cgi","rpm","deb","php","phtml","php3","php4","php5","js")
+				"audio"=>array("mp3","flac","wma","wav","aac","mid"),
+				"mp3"=>array("mp3"),
+				"video"=>array("mp4","webm","ogg","mkv","flv","avi","qt","mov","wmv","mpg"),
+				"videoPlayer"=>array("mp4","webm"),			//lightbox video
+				"mediaPlayer"=>array("mp4","webm","mp3"),	//lightbox mp3
+				"pdfTxt"=>array("pdf","txt","text"),		//lightbox pdf/txt
+				"attachedFileInsert"=>array("jpg","jpeg","png","gif","mp4","webm","mp3"),										//Fichiers joints pouvant être intégrés dans une description (imageBrowser + mediaPlayer)
+				"forbidden"=>array("htaccess","sh","so","bin","cgi","rpm","deb","bat","php","phtml","php3","php4","php5","js")	//Fichiers script interdits
 			);
-			//Fichier joint pouvant être intégré dans une description (ou autre)
-			static::$_fileTypes["attachedFileInsert"]=array_merge(static::$_fileTypes["imageBrowser"],static::$_fileTypes["videoPlayer"],static::$_fileTypes["mp3"],static::$_fileTypes["flash"]);
-			//Fichier pouvant être ouvert dans le navigateur
-			static::$_fileTypes["filesBrowser"]=array_merge(static::$_fileTypes["imageBrowser"],static::$_fileTypes["videoPlayer"],static::$_fileTypes["mp3"],static::$_fileTypes["flash"],static::$_fileTypes["text"],static::$_fileTypes["html"],static::$_fileTypes["pdf"]);
 		}
 		//renvoie les fichiers correspondant aux types
 		return (array_key_exists($typeKey,static::$_fileTypes))  ?  static::$_fileTypes[$typeKey]  :  array();
 	}
 
 	/*
-	 * Controle le type de fichier en fonction de son extension			(ex "controle_fichier()")
+	 * Controle le type de fichier en fonction de son extension
 	 */
-	public static function controlType($typeKey, $fileName)
+	public static function isType($typeKey, $fileName)
 	{
 		return in_array(self::extension($fileName), self::fileTypes($typeKey));
+	}
+	
+	/*
+	 * Controle l'upload d'un nouveau fichier : type de fichier autorisé & espace disque suffisant ?
+	 */
+	public static function controleUpload($fileName, $fileSize, $datasFolderSize=null)
+	{
+		//Init le $datasFolderSize
+		$datasFolderSize=(!empty($datasFolderSize))  ?  $datasFolderSize  :  self::datasFolderSize();
+		////	Controle du type de fichier  &  L'espace disque disponible
+		if(File::isType("forbidden",$fileName))						{Ctrl::addNotif(Txt::trad("NOTIF_fileVersionForbidden")." : ".$fileName);  return false;}
+		elseif(($datasFolderSize+$fileSize) > limite_espace_disque)	{Ctrl::addNotif("NOTIF_diskSpace");  return false;}
+		else														{return true;}
 	}
 
 	/*
@@ -158,37 +108,41 @@ class File
 	 */
 	public static function getMediaPlayer($filePath)
 	{
-		$defaultMessage="Your browser does not support HTML5: thanks for updating it.<br>Votre navigateur ne prend pas en charge HTML5: merci de le mettre à jour.";
-		if(self::controlType("videoPlayer",$filePath))	{return "<video controls><source src='".$filePath."' type='video/".self::extension($filePath)."'>".$defaultMessage."</video>";}
-		elseif(self::controlType("mp3",$filePath))		{return "<audio controls><source src='".$filePath."' type='audio/mpeg'>".$defaultMessage."</audio>";}
-		elseif(self::controlType("flash",$filePath))	{return "<object type='application/x-shockwave-flash' data='".$filePath."'><param name='movie' value='".$filePath."'></object>";}
+		if(self::isType("videoPlayer",$filePath))	{return "<br><br><video controls controlsList='nodownload' onclick='this.play()'><source src='".$filePath."' type='video/".self::extension($filePath)."'>HTML5 browser is required</video>";}
+		elseif(self::isType("mp3",$filePath))		{return "<br><br><audio controls controlsList='nodownload'><source src='".$filePath."' type='audio/mp3'>HTML5 browser is required</audio>";}
+		elseif(self::isType("flash",$filePath))		{return "<br><br><object type='application/x-shockwave-flash' data='".$filePath."'><param name='movie' value='".$filePath."'></object>";}
 	}
 
 	/*
 	 * Telecharge un fichier
 	 */
-	public static function download($fileName, $filePath=null, $fileContent=null)
+	public static function download($fileName, $filePath=null, $fileContent=null, $exitScript=true)
 	{
-		// Fichier généré à la volée ($fileContent) OU présent dans DATAS/
-		if(!empty($fileContent) || is_file($filePath))
+		////	Annule le download depuis l'appli, pour ne pas bloquer InAppBrowser. Download ensuite le fichier via le browser system, avec en paramètre "fromMobileApp". Note: InAppBrowser et le browser system utilisent les mêmes cookies : "Tool::isMobileApp()" renvoie donc toujours "true"..
+		if(Req::isMobileApp() && Req::isParam("fromMobileApp")==false)  {echo "<script>  setTimeout(function(){ window.history.back(); },1000);  </script>";}
+		////	Fichier généré à la volée ($fileContent) OU Fichier dans le dossier DATAS
+		elseif(!empty($fileContent) || is_file($filePath))
 		{
-			// Augmente la duree du script
-			@set_time_limit(120);//disabled en safemode
-			// Headers
+			////	Augmente la duree du script (pas en safemode)
+			@set_time_limit(120);
+			////	Headers
 			header("Content-Type: application/octet-stream");
 			header("Content-Disposition: attachment; filename=\"".Txt::clean($fileName,"download")."\"");
-			header("Expires: 0");
-			header("Pragma: public");
-			header("Cache-Control: public, must-revalidate, post-check=0, pre-check=0");
-			if(!empty($filePath))    {header("Content-Length: ".filesize($filePath));}
-			// Envoi direct d'un fichier (si < 20mo)  /  Envoi d'un fichier généré à la volée  /  Envoie d'un gros fichier par tranche de 2 mo (si > 20mo)
-			if(!empty($filePath) && filesize($filePath)<20971520)	{readfile($filePath);}
-			elseif(!empty($fileContent)){
-				header('Content-Type: text/plain; charset=utf-8');
+			header("Cache-Control: no-store");
+			if(!empty($filePath))  {header("Content-Length: ".filesize($filePath));}//fichier dans DATAS
+			////	Download d'un fichier généré à la volée
+			if(!empty($fileContent)){
+				header("Content-Type: text/plain; charset=utf-8");
 				echo $fileContent;
-			}else{
+			}
+			////	Download direct d'un fichier < 50 mo
+			elseif(filesize($filePath)<(self::sizeMo*50)){
+				readfile($filePath);
+			}
+			////	Download du fichier par tranche de 1mo
+			else{
 				session_write_close();//permet de continuer à naviguer sur le site durant le téléchargement!
-				$handle=fopen($filePath,'rb');
+				$handle=fopen($filePath,"rb");
 				while(!feof($handle)){
 					print fread($handle,self::sizeMo);
 					flush();//Vide les tampons de sortie
@@ -197,31 +151,36 @@ class File
 				fclose($handle);
 				ob_end_clean();//Détruit les données du tampon de sortie et éteint la temporisation de sortie
 			}
+			////	Fin de script : fonctionnement par défaut ..sauf par exemple si on veut supprimer le fichier temporaire
+			if($exitScript==true)  {exit;}
+		}
+	}
+
+	/*
+	 * Readfile du fichier pour un affichage direct par le browser ..sans mettre le chemin réel dans le html
+	 */
+	public static function display($filePath)
+	{
+		if(is_file($filePath))
+		{
+			//Init le "Content-Type"
+			if(self::isType("imageBrowser",$filePath))	{$contentType="image/".self::extension($filePath);}
+			elseif(self::isType("pdf",$filePath))		{$contentType="application/pdf";}
+			elseif(self::isType("text",$filePath))		{$contentType="text/plain;";}
+			else										{$contentType="application/octet-stream";}
+			//Envoie le "Header"
+			header('Content-Type: '.$contentType);
+			header('Content-Length: '.filesize($filePath));
+			header('Cache-Control: no-store');
+			header('Content-Transfer-Encoding: binary');
+			header('Accept-Ranges: bytes');//Pour ne pas bloquer la lecture des balises audio/video
+			readfile($filePath);
 			exit;
 		}
 	}
 
 	/*
-	 * Readfile du fichier pour un affichage direct par le browser, sans mettre le chemin réel dans le html!
-	 */
-	public static function display($filePath)
-	{
-		if(is_file($filePath)){
-			$extension=self::extension($filePath);
-			if(self::controlType("imageBrowser",$filePath))	{$contentType="image/".$extension;}
-			elseif($extension=="pdf")						{$contentType="application/pdf";}
-			elseif($extension=="mp3")						{$contentType="audio/mpeg";}
-			elseif($extension=="txt")						{$contentType="text/plain;";}
-			elseif($extension=="rtf")						{$contentType="application/rtf;";}
-			else											{$contentType="application/octet-stream";}
-			header("Content-Type: ".$contentType);
-			header("Content-Length: ".filesize($filePath));
-			readfile($filePath);
-		}
-	}
-
-	/*
-	 * Taille d'un dossier, en octets  (fonction récursive. Alternative: "du -sb")					(ex "dossier_taille()")
+	 * Taille d'un dossier, en octets  (fonction récursive. Alternative: "du -sb")
 	 */
 	public static function folderSize($folderPath)
 	{
@@ -231,10 +190,10 @@ class File
 		if(is_dir($folderPath))
 		{
 			// Parcourt le dossier courant -> récupère la taille des fichiers / lance récursivement "folderSize()"
-			foreach(scandir($folderPath) as $tmpFile)
+			foreach(scandir($folderPath) as $tmpFileName)
 			{
-				if($tmpFile!='.' && $tmpFile!='..'){
-					$filePath=$folderPath."/".$tmpFile;
+				if(in_array($tmpFileName,['.','..'])==false){
+					$filePath=$folderPath."/".$tmpFileName;
 					if(is_file($filePath))		{$folderSize+=filesize($filePath);}
 					elseif(is_dir($filePath))	{$folderSize+=self::folderSize($filePath);}
 				}
@@ -245,10 +204,11 @@ class File
 	}
 
 	/*
-	 * Taille du PATH_DATAS (recalculé toute les 10mn)			(ex "taille_stock_fichier()")///!!!ASSOCIER A UNE ACTION : AJOUT/SUPPRESSION DE FICHIER DANS LE DATAS/
+	 * Taille du PATH_DATAS
 	 */
 	public static function datasFolderSize($refresh=false)
 	{
+		//Durée de la valeur gardée en cache : 10mn
 		$timeout=600;
 		// Récupère la taille de "PATH_DATAS" (si refresh, ou pas encore définie en session, ou si valeur expiré) 
 		if($refresh==true || empty($_SESSION["datasFolderSize"]) || (time()-$_SESSION["datasFolderSizeTimeout"])>$timeout){
@@ -260,7 +220,7 @@ class File
 	}
 
 	/*
-	 * Retourne une valeur en octets, à partir d'une valeur en Go/Mo/Ko	(exple : 10Mo)											(ex "return_bytes()")
+	 * Retourne une valeur en octets, à partir d'une valeur en Go/Mo/Ko	(exple : 10Mo)
 	 */
 	public static function getBytesSize($sizeText)
 	{
@@ -271,30 +231,30 @@ class File
 	}
 
 	/*
-	 * Affiche une taille (fichier/dossier) à partir d'une valeur en octets ..ou d'un texte (exple : 10Mo)						(ex "afficher_taille()")
+	 * Affiche une taille (fichier/dossier) à partir d'une valeur en octets ..ou d'un texte (exple : 10Mo)
 	 */
 	public static function displaySize($size, $displayLabel=true)
 	{
 		$bytesSize=self::getBytesSize($size);
-		if($bytesSize>=self::sizeGo)		{$size=round(($bytesSize/self::sizeGo),2);		$tradLabel="giga_octet";}
-		elseif($bytesSize>=self::sizeMo)	{$size=round(($bytesSize/self::sizeMo),1);		$tradLabel="mega_octet";}
-		else								{$size=round(($bytesSize/self::sizeKo),0);		$tradLabel="kilo_octet";}
+		if($bytesSize>=self::sizeGo)		{$size=round(($bytesSize/self::sizeGo),2);	$tradLabel="gigaOctet";}
+		elseif($bytesSize>=self::sizeMo)	{$size=round(($bytesSize/self::sizeMo),1);	$tradLabel="megaOctet";}
+		else								{$size=round(($bytesSize/self::sizeKo),0);	$tradLabel="kiloOctet";}
 		return ($displayLabel==true)  ?  $size." ".Txt::trad($tradLabel)  :  $size;
 	}
 
 	/*
-	 * Retourne la taille max des fichiers uploadés (en Octets)					(ex "libelle_upload_max_filesize()")
+	 * Retourne la taille max des fichiers uploadés : en Octets
 	 */
 	public static function uploadMaxFilesize($message=false)
 	{
 		$upload_max_filesize=(int)self::getBytesSize(ini_get("upload_max_filesize"));
-		if($message=="error")	{return Txt::trad("FILE_erreur_taille_fichier")." :<br>".Txt::trad("FILE_limite_chaque_fichier")." ".self::displaySize($upload_max_filesize);}
-		if($message=="info")	{return Txt::trad("FILE_limite_chaque_fichier")." ".self::displaySize($upload_max_filesize);}
+		if($message=="error")	{return Txt::trad("FILE_fileSizeError")." :<br>".Txt::trad("FILE_fileSizeLimit")." ".self::displaySize($upload_max_filesize);}
+		if($message=="info")	{return Txt::trad("FILE_fileSizeLimit")." ".self::displaySize($upload_max_filesize);}
 		else					{return $upload_max_filesize;}
 	}
 
 	/*
-	 * Suppression d'un fichier/dossier sur le disque (fonction recursive)
+	 * Suppression d'un fichier/dossier sur le disque
 	 */
 	public static function rm($targetPath, $errorMessage=true)
 	{
@@ -303,11 +263,15 @@ class File
 		//Verifie l'accès en écriture (avec message d'erreur au besoin?)
 		if(self::isWritable($targetPath,$errorMessage))
 		{
+			//Supprime un fichier OU Supprime récursivement un dossier
 			if(is_file($targetPath))	{return unlink($targetPath);}
-			elseif(is_dir($targetPath) && $targetPath!=PATH_MOD_FILE){
-				foreach(scandir($targetPath) as $tmpFile){
-					if($tmpFile!='.' && $tmpFile!='..')  {self::rm($targetPath."/".$tmpFile,$errorMessage);}
+			elseif(is_dir($targetPath) && $targetPath!=PATH_MOD_FILE)
+			{
+				//Supprime le contenu du dossier (récursivité)
+				foreach(scandir($targetPath) as $tmpFileName){
+					if(in_array($tmpFileName,['.','..'])==false)  {self::rm($targetPath."/".$tmpFileName,$errorMessage);}
 				}
+				//Supprime enfin le dossier
 				return rmdir($targetPath);
 			}
 		}
@@ -320,18 +284,18 @@ class File
 	{
 		if(file_exists($targetPath) && is_writable($targetPath) && $targetPath!=PATH_MOD_FILE)	{return true;}
 		else{
-			if($errorMessage==true)  {Ctrl::addNotif(Txt::trad("MSG_NOTIF_acces_fichier_dossier")." : ".str_replace(PATH_MOD_FILE,"",$targetPath));}
+			if($errorMessage==true)  {Ctrl::addNotif(Txt::trad("NOTIF_fileOrFolderAccess")." : ".str_replace(PATH_MOD_FILE,"",$targetPath));}
 			return false;
 		}
 	}
 
 	/*
-	 * Redimensionne une image ("imgSrc.png"= "imgDest.jpg")														(ex "reduire_image()")
+	 * Redimensionne une image ("imgSrc.png"= "imgDest.jpg")
 	 */
 	public static function imageResize($imgPathSrc, $imgPathDest, $maxWidth, $maxHeight=null, $compressionQuality=85)
 	{
 		// Verifs de base
-		if(self::controlType("imageResize",$imgPathSrc) && function_exists("getimagesize") && is_file($imgPathSrc) && is_numeric($maxWidth))
+		if(self::isType("imageResize",$imgPathSrc) && function_exists("getimagesize") && is_file($imgPathSrc) && is_numeric($maxWidth))
 		{
 			////	Récupère la taile de l'image et vérifie l'intégrité du fichier
 			$getimagesize=@getimagesize($imgPathSrc);
@@ -351,11 +315,11 @@ class File
 					$imgImagick=new Imagick($imgPathSrc);
 					//Vérifie s'il faut réorienter l'image
 					$imgOrientation=$imgImagick->getImageOrientation();
-					if($imgOrientation==6)		{$imgRotate=90;}
-					elseif($imgOrientation==8)	{$imgRotate=-90;}
-					if(isset($imgRotate)){
+					if($imgOrientation==6)		{$imgRotation=90;}
+					elseif($imgOrientation==8)	{$imgRotation=-90;}
+					if(isset($imgRotation)){
 						list($newWidth,$newHeight)=[$newHeight,$newWidth];//Switch le width et height?
-						$imgImagick->rotateImage(new ImagickPixel('#000'),$imgRotate);
+						$imgImagick->rotateImage("#000",$imgRotation);
 					}
 					//Compresse && Resize && enregistre l'image
 					$imgImagick->setImageCompressionQuality($compressionQuality); 
@@ -396,38 +360,117 @@ class File
 	}
 
 	/*
-	 * Generer archive zip															(ex "creer_envoyer_archive()")
+	 * Generer archive zip
 	 */
 	public static function downloadArchive($filesList, $archiveName)
 	{
 		if(!empty($filesList))
 		{
+			//temps d'execution
+			@set_time_limit(240);//disabled en safemode
 			//Création de l'archive
-			$archiveTmpPath=sys_get_temp_dir()."/".uniqid(mt_rand()).".zip";
+			$archiveTmpPath=tempnam(sys_get_temp_dir(),"archive".uniqid());
 			$zip=new ZipArchive();
 			$zip->open($archiveTmpPath, ZipArchive::CREATE);
 			//Ajout de chaque fichier à l'archive (avec "realPath" & un "zipPath") ou un dossier vide (avec "emptyFolderZipPath")
 			foreach($filesList as $tmpFile){
 				if(isset($tmpFile["emptyFolderZipPath"]))	{$zip->addEmptyDir($tmpFile["emptyFolderZipPath"]);}
-				elseif(is_file($tmpFile["realPath"]))		{$zip->addFile($tmpFile["realPath"],$tmpFile["zipPath"]);}//Problème d'encodage sous Wamp: au besoin, faire "iconv("UTF-8","CP850",$tmpFile["zipPath"])"
+				elseif(is_file($tmpFile["realPath"]))		{$zip->addFile($tmpFile["realPath"],$tmpFile["zipPath"]);}
 			}
 			//Ferme l'archive, envoi le zip, puis le supprime
 			$zip->close();
-			self::download($archiveName, $archiveTmpPath);
+			self::download($archiveName, $archiveTmpPath, null, false);
 			self::rm($archiveTmpPath);
+			//Supprime les fichiers de plus de 48h dans "/tmp" (fichiers non supprimés si le script est abandonné avant la fin..)
+			foreach(scandir(sys_get_temp_dir()) as $tmpFileName){
+				$tmpFilePath=sys_get_temp_dir()."/".$tmpFileName;
+				if(in_array($tmpFileName,['.','..'])==false && is_file($tmpFilePath) && (time()-filemtime($tmpFilePath))>172800)  {self::rm($tmpFilePath);}
+			}
 		}
 	}
 
 	/*
-	 * Download de grosse archive (sav & co) : controle d'horaire pour ne pas saturer le serveur				(ex "controle_big_download()")
+	 * Controle le download d'une grosse archive (sav & co) : controle de l'horaire pour ne pas saturer le serveur en heure de pointe
 	 */
 	public static function archiveSizeControl($archiveSize)
 	{
-		$limitSize=(self::sizeMo*300);//300Mo max
-		$limitHour=array("begin"=>9,"end"=>19);//plage horaire de pointe
-		if(date("G") > $limitHour["begin"] && date("G") < $limitHour["end"] && (int)$archiveSize > $limitSize){
-			Ctrl::addNotif(Txt::trad("download_alert")." (".$limitHour["begin"]."h-".$limitHour["end"]."h). ".Txt::trad("download_alert2")." : ".self::displaySize($limitSize));
-			Ctrl::redir("?ctrl=".Req::$curCtrl);//ne pas mettre de "action"
+		$archiveSizeControl=true;
+		$limitSize=(self::sizeGo*2);//2Go max (tester avec un 'top' du systeme)
+		$disabledBegin=9;//debut plage horaire de limitation
+		$disabledEnd=19;//fin plage horaire de limitation
+		if($archiveSizeControl==true && date("G") > $disabledBegin && date("G") < $disabledEnd && (int)$archiveSize > $limitSize){
+			$alertLabel=str_replace("--ARCHIVE_SIZE--", self::displaySize($archiveSize), Txt::trad("downloadAlert"))." ".$disabledEnd."H";
+			Ctrl::addNotif($alertLabel, "warning");
+			Ctrl::redir("?ctrl=".Req::$curCtrl);//Redirige en page principale du module (ne pas mettre de "action")
+		}
+	}
+
+
+	/***************************************************************************************************************************/
+	/*******************************************	SPECIFIC METHODS	********************************************************/
+	/***************************************************************************************************************************/
+	
+	/*
+	 * Modif du "config.inc.php"
+	 */
+	public static function updateConfigFile($tabAddModifConst=null, $tabDeleteConst=null)
+	{
+		// FICHIER ACCESSIBLE EN ÉCRITURE?
+		$configFilePath=PATH_DATAS."config.inc.php";
+		if(!is_writable($configFilePath))	{throw new Exception("config.inc.php : the file doesn't exist or is not writable");}
+		else
+		{
+			//Récupère le fichier sous forme de tableau
+			$configTab=file($configFilePath);
+			if(count($configTab)>1)
+			{
+				$modifiedConstants=array();
+				////	Parcourt chaque ligne/constante du fichier
+				foreach($configTab as $lineKey=>$lineValue)
+				{
+					//ON MODIFIE "limite_nb_utils" : AGORA V2
+					if(stristr($lineValue,"limite_nb_utils"))	{$lineValue=str_replace("limite_nb_utils","limite_nb_users",$lineValue);}
+					//SUPPRIME LA CONSTANTE COURANTE?
+					if(!empty($tabDeleteConst)){
+						foreach($tabDeleteConst as $constName){
+							if(!empty($constName) && stristr($lineValue,'"'.$constName.'"'))	{$lineValue="";}
+						}
+					}
+					//MODIF LA CONSTANTE COURANTE : SI ELLE EST DANS "$tabAddModifConst"
+					if(!empty($tabAddModifConst)){
+						foreach($tabAddModifConst as $constName=>$constValue){
+							if(stristr($lineValue,$constName)){
+								if($constValue===true || $constName=="true")		{$constValue="true";}//true sans guillemet
+								elseif($constValue===false || $constName=="false")	{$constValue="false";}//false sans guillemet
+								else												{$constValue="\"".$constValue."\"";}//const non booléenne entre guillemet
+								$lineValue="define(\"".$constName."\", ".$constValue.");\n";
+								$modifiedConstants[]=$constName;//Ajoute à la liste des constantes modifiées
+							}
+						}
+					}
+					//SUPPRIME AU BESOIN LA BALISE PHP DE FERMETURE (INUTILE ET PEUT POSER PB LORS D'AJOUT DE CONSTANTE)
+					$lineValue=str_replace("?>","",$lineValue);
+					// ENREGISTRE LA VALEUR FINALE DE LA LIGNE !!
+					$configTab[$lineKey]=$lineValue;
+				}
+				////	AJOUTE LES CONSTANTES DE ABSENTES DU FICHIER (ET PAS PRECEDEMENT MODIFIES!)
+				if(!empty($tabAddModifConst)){
+					foreach($tabAddModifConst as $constName=>$constValue){
+						//contante pas modifiée : on l'ajoute au fichier!
+						if(!in_array($constName,$modifiedConstants)){
+							if($constValue===true || $constName=="true")		{$constValue="true";}//true sans guillemet
+							elseif($constValue===false || $constName=="false")	{$constValue="false";}//false sans guillemet
+							else												{$constValue="\"".$constValue."\"";}//const non booléenne entre guillemet
+							$configTab[]="define(\"".$constName."\", ".$constValue.");\n";
+						}
+					}
+				}
+				////	ON REMPLACE LE FICHIER !
+				$fileContent=implode("", $configTab);
+				$fp=fopen($configFilePath, "w");
+				fwrite($fp, $fileContent);
+				fclose($fp);
+			}
 		}
 	}
 }

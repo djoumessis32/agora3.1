@@ -1,23 +1,23 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
- * Mise à jour de la base de données
+ * Anciennes mises à jours jusqu'a v2.17.5
  */
 class DbUpdateOld extends DbUpdate
 {
-	/*
-	 * Version de BDD plus ancienne que celle du logiciel : UPDATE!
-	 */
-	public static function updateVersionOld($versionUpdate)
-	{
-		return (self::updateVersion($versionUpdate) || $versionUpdate==null) ? true : false;
-	}
-	
 	/*
 	 * Update simple (insert, change..)
 	 */
 	public static function updateQueryOld($versionUpdate, $sqlQuery)
 	{
-		if(self::updateVersionOld($versionUpdate))	{self::query($sqlQuery);}
+		if(self::updateVersion($versionUpdate))	{self::query($sqlQuery);}
 	}
 
 	/*
@@ -26,7 +26,7 @@ class DbUpdateOld extends DbUpdate
 	public static function tableExistOld($versionUpdate, $table, $sqlQuery=null)
 	{
 		$tabResult=self::getCol("show tables like '".$table."'");
-		if(self::updateVersionOld($versionUpdate) && !empty($sqlQuery) && empty($tabResult))	{self::query($sqlQuery);}
+		if(self::updateVersion($versionUpdate) && !empty($sqlQuery) && empty($tabResult))	{self::query($sqlQuery);}
 		return (!empty($tabResult)) ? true : false;
 	}
 
@@ -36,7 +36,7 @@ class DbUpdateOld extends DbUpdate
 	public static function fieldExistOld($versionUpdate, $table, $field, $sqlQuery=null)
 	{
 		$tabResult=self::getCol("show columns from `".$table."` like '".$field."'");
-		if(self::updateVersionOld($versionUpdate) && !empty($sqlQuery) && empty($tabResult))	{self::query($sqlQuery);}
+		if(self::updateVersion($versionUpdate) && !empty($sqlQuery) && empty($tabResult))	{self::query($sqlQuery);}
 		return (!empty($tabResult)) ? true : false;
 	}
 
@@ -48,7 +48,7 @@ class DbUpdateOld extends DbUpdate
 	public static function fieldRenameOld($versionUpdate, $table, $fieldOld, $sqlQuery)
 	{
 		$fieldOldExiste=self::fieldExistOld($versionUpdate,$table,$fieldOld);
-		if(self::updateVersionOld($versionUpdate) && $fieldOldExiste==true){
+		if(self::updateVersion($versionUpdate) && $fieldOldExiste==true){
 			self::query($sqlQuery);
 			return true;
 		}
@@ -86,7 +86,7 @@ class DbUpdateOld extends DbUpdate
 
 		////	ON DEPLACE LE CHAMPS "fond_ecran" VERS "gt_agora_info"  &  CHANGE LE NOM DU DOSSIER DES FONDS D'ECRAN  &  AJOUTE LE DOSSIER STOCK_FICHIERS/TMP
 		self::fieldExistOld("2.8.0", "gt_agora_info", "fond_ecran", "ALTER TABLE gt_agora_info ADD fond_ecran TEXT AFTER langue");
-		if(self::updateVersionOld("2.8.0")){
+		if(self::updateVersion("2.8.0")){
 			if(is_dir(PATH_DATAS."fond_ecran_espace/"))	{rename(PATH_DATAS."fond_ecran_espace/", PATH_DATAS."fond_ecran/");}
 			if(!is_dir(PATH_DATAS."tmp/"))				{mkdir(PATH_DATAS."tmp/");}
 		}
@@ -143,7 +143,7 @@ class DbUpdateOld extends DbUpdate
 
 		////	AJOUTE TABLE ET DOSSIER DES FICHIERS ATTACHES AUX OBJETS
 		$oldPathObjectAttachement=PATH_DATAS."fichiers_objet/";
-		if(self::updateVersionOld("2.8.0") && !is_dir($oldPathObjectAttachement) && !is_dir(PATH_OBJECT_ATTACHMENT))	{mkdir($oldPathObjectAttachement);}
+		if(self::updateVersion("2.8.0") && !is_dir($oldPathObjectAttachement) && !is_dir(PATH_OBJECT_ATTACHMENT))	{mkdir($oldPathObjectAttachement);}
 		self::tableExistOld("2.8.0", "gt_jointure_objet_fichier", "CREATE TABLE gt_jointure_objet_fichier (id_fichier INT UNSIGNED AUTO_INCREMENT, nom_fichier TEXT, type_objet TEXT, id_objet INT UNSIGNED, PRIMARY KEY (id_fichier))");
 
 		////	CORRECTIF TABLE TACHE ABSENTES (erreur d'install)
@@ -207,12 +207,13 @@ class DbUpdateOld extends DbUpdate
 		////	NETTOYAGE DE PRIMPTEMPS
 		self::updateQueryOld("2.8.0", "DELETE FROM gt_jointure_objet WHERE id_objet='0'");
 		self::updateQueryOld("2.8.0", "ALTER TABLE gt_tache CHANGE date_debut date_debut DATE DEFAULT NULL, CHANGE date_fin date_fin DATE DEFAULT NULL");
+		self::updateQueryOld("2.8.0", "UPDATE gt_agenda_evenement SET period_date_fin=null WHERE period_date_fin<'2000-01-01'");
 		self::updateQueryOld("2.8.0", "ALTER TABLE gt_agenda_evenement CHANGE period_date_fin period_date_fin DATE DEFAULT NULL");
 
 		////	CREATION DU CHAMP  "editeur_text_mode" + "logo_url" + "messenger_desactive" + "libelle_module" + "tri_personnes"  SUR LA TABLE DE PARAMETRAGE
 		self::fieldExistOld("2.8.0", "gt_agora_info", "editeur_text_mode", "ALTER TABLE gt_agora_info ADD editeur_text_mode TINYTEXT AFTER edition_popup");
 		$fieldExist=self::fieldExistOld("2.8.0", "gt_agora_info", "logo_url", "ALTER TABLE gt_agora_info ADD logo_url TINYTEXT AFTER logo");
-		if($fieldExist==false)	{self::updateQueryOld("2.8.0", "UPDATE gt_agora_info SET logo_url=".self::format(AGORA_PROJECT_URL));}
+		if($fieldExist==false)	{self::updateQueryOld("2.8.0", "UPDATE gt_agora_info SET logo_url=".self::format(OMNISPACE_URL_PUBLIC));}
 		self::fieldExistOld("2.8.0", "gt_agora_info", "messenger_desactive", "ALTER TABLE gt_agora_info ADD messenger_desactive TINYINT");
 		self::fieldExistOld("2.8.0", "gt_agora_info", "libelle_module", "ALTER TABLE gt_agora_info ADD libelle_module TINYTEXT");
 		$fieldExist=self::fieldExistOld("2.8.0", "gt_agora_info", "tri_personnes", "ALTER TABLE gt_agora_info ADD tri_personnes ENUM('nom','prenom') NOT NULL");
@@ -263,7 +264,6 @@ class DbUpdateOld extends DbUpdate
 		self::updateQueryOld("2.8.0", "UPDATE gt_agenda_evenement SET periodicite_valeurs=null WHERE periodicite_valeurs='' OR periodicite_valeurs='0'");
 		self::updateQueryOld("2.8.0", "UPDATE gt_agenda_evenement SET periodicite_type=null WHERE periodicite_valeurs is null");
 		self::updateQueryOld("2.8.0", "UPDATE gt_agenda_evenement SET period_date_exception=null WHERE period_date_exception=''");
-		self::updateQueryOld("2.8.0", "UPDATE gt_agenda_evenement SET period_date_fin=null WHERE period_date_fin like '%0000-00-00%'");
 		self::updateQueryOld("2.8.0", "UPDATE gt_utilisateur SET agenda_desactive=null WHERE agenda_desactive!=1");
 		self::updateQueryOld("2.8.0", "DELETE FROM gt_utilisateur_livecounter");
 

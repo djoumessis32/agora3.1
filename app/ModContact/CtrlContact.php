@@ -1,4 +1,12 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Controleur du module "Contact"
  */
@@ -6,7 +14,7 @@ class CtrlContact extends Ctrl
 {
 	const moduleName="contact";
 	public static $folderObjectType="contactFolder";
-	public static $moduleOptions=["AdminRootFolderAddContent"];
+	public static $moduleOptions=["adminRootAddContent"];
 	public static $MdlObjects=array("MdlContact","MdlContactFolder");
 
 	/*
@@ -14,9 +22,8 @@ class CtrlContact extends Ctrl
 	 */
 	public static function actionDefault()
 	{
-		static::$isMainPage=true;
-		$vDatas["foldersList"]=self::$curContainer->foldersList();
-		$vDatas["contactList"]=Db::getObjTab("contact", "SELECT * FROM ap_contact WHERE ".MdlContact::sqlDisplayedObjects(self::$curContainer)." ".MdlContact::sqlSort(self::$curContainer));
+		$vDatas["foldersList"]=self::$curContainer->folders();
+		$vDatas["contactList"]=Db::getObjTab("contact", "SELECT * FROM ap_contact WHERE ".MdlContact::sqlDisplayedObjects(self::$curContainer)." ".MdlContact::sqlSort());
 		static::displayPage("VueIndex.php",$vDatas);
 	}
 
@@ -25,15 +32,14 @@ class CtrlContact extends Ctrl
 	 */
 	public static function plugin($pluginParams)
 	{
-		$pluginParams=array_merge($pluginParams,array("MdlObjectFolder"=>"MdlContactFolder"));
-		$pluginsList=self::getPluginsFolders($pluginParams);
+		$pluginsList=self::getPluginsFolders($pluginParams,"MdlContactFolder");
 		foreach(MdlContact::getPluginObjects($pluginParams) as $tmpObj)
 		{
 			$tmpObj->pluginModule=self::moduleName;
 			$tmpObj->pluginIcon=self::moduleName."/icon.png";
-			$tmpObj->pluginLabel=$tmpObj->display("all");
-			$tmpObj->pluginTitle=$tmpObj->containerObj()->folderPath("text")."<br>".$tmpObj->displayAutor(true,true);
-			$tmpObj->pluginJsIcon="redir('".$tmpObj->getUrl("container")."',true);";
+			$tmpObj->pluginLabel=$tmpObj->getLabel("all");
+			$tmpObj->pluginTooltip=$tmpObj->containerObj()->folderPath("text");
+			$tmpObj->pluginJsIcon="windowParent.redir('".$tmpObj->getUrl("container")."');";//Redir vers le dossier conteneur
 			$tmpObj->pluginJsLabel="lightboxOpen('".$tmpObj->getUrl("vue")."');";
 			$pluginsList[]=$tmpObj;
 		}
@@ -41,9 +47,9 @@ class CtrlContact extends Ctrl
 	}
 
 	/*
-	 * ACTION : contact détaillé
+	 * ACTION : Vue détaillée d'un contact
 	 */
-	public static function actionContactVue()
+	public static function actionVueContact()
 	{
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlRead();
@@ -59,13 +65,13 @@ class CtrlContact extends Ctrl
 		//Init
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlEdit();
-		////	Formulaire validé
+		////	Valide le formulaire
 		if(Req::isParam("formValidate")){
 			//Enregistre & recharge l'objet
-			$curObj=$curObj->createUpdate("civility=".Db::formatParam("civility").", name=".Db::formatParam("name").", firstName=".Db::formatParam("firstName").", mail=".Db::formatParam("mail").", telephone=".Db::formatParam("telephone").", telmobile=".Db::formatParam("telmobile").", fax=".Db::formatParam("fax").", website=".Db::formatParam("website").", adress=".Db::formatParam("adress").", postalCode=".Db::formatParam("postalCode").", city=".Db::formatParam("city").", country=".Db::formatParam("country").", skills=".Db::formatParam("skills").", hobbies=".Db::formatParam("hobbies").", function=".Db::formatParam("function").", companyOrganization=".Db::formatParam("companyOrganization").", comment=".Db::formatParam("comment"));
+			$curObj=$curObj->createUpdate("civility=".Db::formatParam("civility").", name=".Db::formatParam("name").", firstName=".Db::formatParam("firstName").", mail=".Db::formatParam("mail").", telephone=".Db::formatParam("telephone").", telmobile=".Db::formatParam("telmobile").", adress=".Db::formatParam("adress").", postalCode=".Db::formatParam("postalCode").", city=".Db::formatParam("city").", country=".Db::formatParam("country").", function=".Db::formatParam("function").", companyOrganization=".Db::formatParam("companyOrganization").", comment=".Db::formatParam("comment"));
 			//Ajoute/supprime l'image / Notifie par mail & Ferme la page
 			$curObj->editImg();
-			$curObj->sendMailNotif($curObj->display());
+			$curObj->sendMailNotif($curObj->getLabel());
 			static::lightboxClose();
 		}
 		////	Affiche la vue
@@ -78,8 +84,11 @@ class CtrlContact extends Ctrl
 	 */
 	public static function actionEditPersonsImportExport()
 	{
+		////	Controle d'accès
+		if(Ctrl::$curUser->isAdminSpace()==false)  {static::lightboxClose();}
 		////	Validation de formulaire
-		if(Req::isParam("formValidate")){
+		if(Req::isParam("formValidate"))
+		{
 			//Export de contacts
 			if(Req::getParam("actionImportExport")=="export"){
 				$contactList=Db::getObjTab("contact", "SELECT * FROM ap_contact WHERE ".MdlContact::sqlDisplayedObjects(self::$curContainer));
@@ -101,7 +110,7 @@ class CtrlContact extends Ctrl
 					}
 					//Enregistre le contact & Droits d'accès en lecture sur l'espaces courant?
 					$curObj=$curObj->createUpdate($sqlProperties);
-					if($curObj->isIndependant())	{$curObj->setAccessRights([Ctrl::$curSpace->_id."_spaceUsers_1"]);}
+					if($curObj->isIndependant())	{$curObj->setAffectations([Ctrl::$curSpace->_id."_spaceUsers_1"]);}
 				}
 				//Ferme la page
 				static::lightboxClose();
@@ -125,12 +134,12 @@ class CtrlContact extends Ctrl
 			//Création du nouveau User
 			$newUser=new MdlUser();
 			$login=(!empty($contactRef->mail))  ?  $contactRef->mail  :  substr($contactRef->firstName,0,1).substr($contactRef->name,0,5);
-			$password=Txt::idUniq();
-			$sqlProperties="civility=".Db::format($contactRef->civility).", name=".Db::format($contactRef->name).", firstName=".Db::format($contactRef->firstName).", mail=".Db::format($contactRef->mail).", telephone=".Db::format($contactRef->telephone).", telmobile=".Db::format($contactRef->telmobile).", fax=".Db::format($contactRef->fax).", website=".Db::format($contactRef->website).", adress=".Db::format($contactRef->adress).", postalCode=".Db::format($contactRef->postalCode).", city=".Db::format($contactRef->city).", country=".Db::format($contactRef->country).", skills=".Db::format($contactRef->skills).", hobbies=".Db::format($contactRef->hobbies).", function=".Db::format($contactRef->function).", companyOrganization=".Db::format($contactRef->companyOrganization).", comment=".Db::format($contactRef->comment);
+			$password=Txt::uniqId(8);
+			$sqlProperties="civility=".Db::format($contactRef->civility).", name=".Db::format($contactRef->name).", firstName=".Db::format($contactRef->firstName).", mail=".Db::format($contactRef->mail).", telephone=".Db::format($contactRef->telephone).", telmobile=".Db::format($contactRef->telmobile).", adress=".Db::format($contactRef->adress).", postalCode=".Db::format($contactRef->postalCode).", city=".Db::format($contactRef->city).", country=".Db::format($contactRef->country).", function=".Db::format($contactRef->function).", companyOrganization=".Db::format($contactRef->companyOrganization).", comment=".Db::format($contactRef->comment);
 			$newUser=$newUser->createUpdate($sqlProperties, $login, $password, Ctrl::$curSpace->_id);
 			if(is_object($newUser)){
-				Ctrl::addNotif("CONTACT_creer_user_confirm");
-				if(is_file($contactRef->pathImgThumb()))	{copy($contactRef->pathImgThumb(),$newUser->pathImgThumb());}//Récupère l'image?
+				Ctrl::addNotif("CONTACT_createUserConfirm");
+				if(is_file($contactRef->pathImgThumb()))  {copy($contactRef->pathImgThumb(),$newUser->pathImgThumb());}//Récupère l'image?
 			}
 			//Redirige
 			self::redir($contactRef->getUrl("container"));

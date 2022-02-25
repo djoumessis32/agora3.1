@@ -1,5 +1,0 @@
-Deny from all
-
-<Files ~ '(?i:.jpg|.jpeg|.png|.gif)$'>
-Allow from all
-</Files>

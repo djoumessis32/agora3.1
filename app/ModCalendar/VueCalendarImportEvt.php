@@ -1,72 +1,78 @@
-<script type="text/javascript">
-lightboxWidth("800px");//Resize
-
-////	Init la page
-$(function(){
-	//Switch de la sélection
-	$("img[src*='switch.png']").on("click",function(){
-		$(":checkbox[id^='boxEvent']").each(function(){
-			$(this).prop("checked",!$(this).prop("checked")).trigger("change");
-		});
-	});
-});
+<script>
+////	Resize
+lightboxSetWidth("1000px");
 
 ////	Contrôle du formulaire
 function formControl()
 {
 	//Fichier Import au format csv
 	if($("input[name='importFile']").exist()){
-		if($("input[name='importFile']").isEmpty())						{displayNotif("<?= Txt::trad("specifier_fichier") ?>");	return false;}
-		else if(extension($("input[name='importFile']").val())!="ics")	{displayNotif("<?= Txt::trad("extension_fichier") ?> ICS");	return false;}
+		if($("input[name='importFile']").isEmpty())						{notify("<?= Txt::trad("specifyFile") ?>");	return false;}
+		else if(extension($("input[name='importFile']").val())!="ics")	{notify("<?= Txt::trad("fileExtension") ?> ICS");	return false;}
 	}
 }
 </script>
 
 <style>
-.fancyboxContent	{padding:0px; margin:0px;}
-form				{text-align:center;}
-td					{text-align:left; vertical-align:top; padding:5px;}
-.vTableHeader td	{background:#ddd; text-align:center;}
-td:nth-child(1)		{width:30px;}
-td:nth-child(2)		{width:100px;}
-td:nth-child(3)		{width:150px;}
-.vTableEvt:hover	{background:#eee;}
-td img				{vertical-align:middle;}
-.eventDescription	{font-weight:normal;}
+form						{text-align:center; padding:0px; margin:0px;}
+.vTable						{width:98%;}
+.vTable td					{text-align:left; vertical-align:top; padding:5px;}
+.vTable img					{vertical-align:middle;}
+.vTable tr:first-child td	{background:#ddd; text-align:center;}
+.vTable tr td:first-child	{width:20px;}
+.vTable tr td:nth-child(2)	{width:30px; cursor:help;}
+.vTable tr td:nth-child(3)	{width:150px;}
+.vTable tr td:nth-child(4)	{width:300px;}
+.vTable tr td:nth-child(5)	{font-weight:normal;}
+.vTable tr:hover			{background:#eee;}
 </style>
 
-<div class="fancyboxContent">
-	<div class="lightboxTitle"><?= Txt::trad("CALENDAR_importer_ical") ?></div>
 
-	<form action="index.php" method="post" enctype="multipart/form-data" onsubmit="return formControl()">
-		<!--SELECTION DU FICHIER D'IMPORT-->
-		<?php if(empty($eventList)){ ?><input type="file" name="importFile"><?php } ?>
-
-		<!--EVENEMENTS A IMPORTER-->
-		<?php if(!empty($eventList)){ ?>
-			<table>
-				<!--HEADER-->
-				<tr class="vTableHeader">
-					<td title="<?= Txt::trad("inverser_selection") ?>"><img src="app/img/switch.png" class="sLink"></td>
-					<td><?= Txt::trad("CALENDAR_importer_ical_etat") ?></td>
-					<td><?= Txt::trad("debut")." - ".Txt::trad("fin") ?></td>
-					<td><?= Txt::trad("title") ?></td>
-					<td><?= Txt::trad("description") ?></td>
-				</tr>
-				<!--LISTE D'EVENEMENTS-->
-				<?php foreach($eventList as $cptEvt=>$tmpEvt){ ?>
-					<tr class="vTableEvt">
-						<td><input type="checkbox" name="eventList[<?= $cptEvt ?>][checked]" value="1" id="boxEvent<?= $cptEvt ?>"></td>
-						<td><?= ($tmpEvt["isPresent"]==true)  ?  "<img src='app/img/dotR.png'> ".Txt::trad("CALENDAR_importer_ical_deja_present")  :  "<img src='app/img/dotG.png'> ".Txt::trad("CALENDAR_importer_ical_a_importer") ?></td>
-						<td><?= Txt::displayDate($tmpEvt["dbDateBegin"],"normal",$tmpEvt["dbDateEnd"]) ?><input type="hidden" name="eventList[<?= $cptEvt ?>][dateBegin]" value="<?= $tmpEvt["dbDateBegin"] ?>"><input type="hidden" name="eventList[<?= $cptEvt ?>][dateEnd]" value="<?= $tmpEvt["dbDateEnd"] ?>"></td>
-						<td><label for="boxEvent<?= $cptEvt ?>"><?= $tmpEvt["SUMMARY"] ?></label> <input type="hidden" name="eventList[<?= $cptEvt ?>][title]" value="<?= $tmpEvt["SUMMARY"] ?>"></td>
-						<td class="eventDescription"><label for="boxEvent<?= $cptEvt ?>"><?= $tmpEvt["DESCRIPTION"] ?></label> <input type="hidden" name="eventList[<?= $cptEvt ?>][description]" value="<?= $tmpEvt["DESCRIPTION"] ?>"></td>
-					</tr>
-				<?php } ?>
-			</table>
-		<?php } ?>
-
-		<!--VALIDATION DU FORM-->
-		<?= Txt::formValidate() ?>
-	</form>
-</div>
+<form action="index.php" method="post" enctype="multipart/form-data" onsubmit="return formControl()" class="lightboxContent">
+	<div class="lightboxTitle"><?= Txt::trad("CALENDAR_importIcal").(!empty($eventList)?" : ".count($eventList)." events":null) ?></div>
+	
+	<?php
+	////	SELECTION DU FICHIER D'IMPORT  /  AFFICHAGE DES EVENEMENTS
+	if(empty($eventList))	{echo "<input type='file' name='importFile'>";}
+	else
+	{
+		////DEBUT DU TABLEAU + HEADER
+		echo "<table class='vTable'>
+				<tr class='vTableHeader'>
+					<td title=\"".Txt::trad("invertSelection")."\"><img src='app/img/switch.png' class='sLink' onclick=\"$(':checkbox[id^=boxEvent]').trigger('click');\"></td>
+					<td>".Txt::trad("CALENDAR_importIcalState")."</td>
+					<td>".Txt::trad("begin")." - ".Txt::trad("end")."</td>
+					<td>".Txt::trad("title")."</td>
+					<td>".Txt::trad("description")."</td>
+				</tr>";
+			////LISTE D'EVENEMENTS
+			foreach($eventList as $cptEvt=>$tmpEvt)
+			{
+				$evtBoxId="boxEvent".$cptEvt;
+				if($tmpEvt["isPresent"]==true)	{$evtCheck=null;		$dotIsPresent="<img src='app/img/dotR.png' title=\"".Txt::trad("CALENDAR_importIcalStatePresent")."\">";}
+				else							{$evtCheck="checked";	$dotIsPresent="<img src='app/img/dotG.png' title=\"".Txt::trad("CALENDAR_importIcalStateImport")."\">";}
+				echo "<tr>
+						<td>
+							<input type='checkbox' name='eventList[".$cptEvt."][checked]' value='1' id='".$evtBoxId."' ".$evtCheck.">
+							<input type='hidden' name='eventList[".$cptEvt."][dbDateBegin]' value=\"".$tmpEvt["dbDateBegin"]."\">
+							<input type='hidden' name='eventList[".$cptEvt."][dbDateEnd]' value=\"".$tmpEvt["dbDateEnd"]."\">
+							<input type='hidden' name='eventList[".$cptEvt."][dbTitle]' value=\"".$tmpEvt["dbTitle"]."\">
+							<input type='hidden' name='eventList[".$cptEvt."][dbDescription]' value=\"".$tmpEvt["dbDescription"]."\">
+							<input type='hidden' name='eventList[".$cptEvt."][dbPeriodType]' value=\"".$tmpEvt["dbPeriodType"]."\">
+							<input type='hidden' name='eventList[".$cptEvt."][dbPeriodValues]' value=\"".$tmpEvt["dbPeriodValues"]."\">
+							<input type='hidden' name='eventList[".$cptEvt."][dbPeriodDateEnd]' value=\"".$tmpEvt["dbPeriodDateEnd"]."\">
+						</td>
+						<td>".$dotIsPresent."</td>
+						<td>".Txt::displayDate($tmpEvt["dbDateBegin"],"full",$tmpEvt["dbDateEnd"])."</td>
+						<td><label for='".$evtBoxId."'>".$tmpEvt["dbTitle"]."</label></td>
+						<td>".Txt::reduce($tmpEvt["dbDescription"],120)."</td>
+					</tr>";
+			}
+		////FIN DU TABLEAU
+		echo "</table>";
+	}
+	
+	////	VALIDATION DU FORM
+	echo Txt::submitButton();
+	?>
+</form>

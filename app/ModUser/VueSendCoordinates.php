@@ -1,12 +1,10 @@
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(400);
+lightboxSetWidth(450);
 
 ////	Confirme l'envoi?
-function formControl()
-{
-	if(!confirm("<?= TXT::trad("USER_envoi_coordonnees_confirm") ?>"))
-		{return false;}
+function formControl(){
+	if(!confirm("<?= TXT::trad("USER_sendCoordsConfirm") ?>"))  {return false;}
 }
 </script>
 
@@ -14,18 +12,18 @@ function formControl()
 .vUserLine	{margin-bottom:10px;}
 </style>
 
-<div class="lightboxTitle"><?= Txt::trad("USER_envoi_coordonnees_info") ?></div>
 
-<form action="index.php" method="post" OnSubmit="return formControl();">
+<form action="index.php" method="post" OnSubmit="return formControl();" class="lightboxContent">
+	<div class="lightboxTitle"><?= Txt::trad("USER_sendCoordsInfo") ?></div>
 	<?php
 	////	LISTE DES UTILISATEURS AVEC MAIL
 	foreach($usersList as $tmpUser){
 		echo "<div class='vUserLine'>
 				<input type='checkbox' name='usersList[]' value='".$tmpUser->_id."' id='usersBox".$tmpUser->_id."'>
-				<label for='usersBox".$tmpUser->_id."' title=\"".$tmpUser->mail."\">".$tmpUser->display()."</label>
+				<label for='usersBox".$tmpUser->_id."' title=\"".$tmpUser->mail."\">".$tmpUser->getLabel()."</label>
 			  </div>";
 	}
 	//Validation du formulaire
-	echo Txt::formValidate("envoyer");
+	echo Txt::submitButton("send");
 	?>
 </form>

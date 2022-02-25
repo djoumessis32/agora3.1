@@ -1,23 +1,44 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
- * Mise à jour de la base de données
+ * Mises à jour
  */
 class DbUpdate extends Db
 {
-	protected static $db_version_agora="2.0";
+	/*
+	 * Récupère et controle la version de l'appli (+ rapide en session) : renvoi "true" si l'appli doit être mise à jour
+	 */
+	private static function versionAgoraUpdate($confirmVersion=false)
+	{
+		//"versionAgora" : Init OU Confirme la version
+		if(empty($_SESSION["dbVersionAgora"]) || $confirmVersion==true){
+			if(self::tableExist("ap_agora"))			{$_SESSION["dbVersionAgora"]=self::getVal("SELECT version_agora FROM ap_agora");}//Version 3.0 ou+
+			elseif(self::tableExist("gt_agora_info"))	{$_SESSION["dbVersionAgora"]=(self::fieldExist("gt_agora_info","version_agora"))  ?  self::getVal("SELECT version_agora FROM gt_agora_info")  :  "2.0.0";}//Version 2.0 ou+ : le champ "version_agora" peut être absent..
+			else										{throw new Exception("dbInstall_dbEmpty");}//Sinon renvoi une Exception "dbInstall"
+		}
+		//Renvoie "true" si l'appli doit être mise à jour en Bdd
+		return version_compare($_SESSION["dbVersionAgora"],VERSION_AGORA,"<");
+	}
 
 	/*
-	 * Version de BDD plus ancienne que celle du logiciel : UPDATE!
+	 * Mise à jour demandé plus récente que la "dbVersionAgora" : UPDATE!
 	 */
-	public static function updateVersion($versionUpdate)
+	protected static function updateVersion($versionUpdate)
 	{
-		return (version_compare(self::$db_version_agora,$versionUpdate,"<") || $versionUpdate==null);
+		return (version_compare($_SESSION["dbVersionAgora"],$versionUpdate,"<") || $versionUpdate==null);
 	}
 
 	/*
 	 * Teste si une table existe & la crée au besoin
 	 */
-	public static function tableExist($tableName, $createQuery=null)
+	private static function tableExist($tableName, $createQuery=null)
 	{
 		$result=self::getCol("show tables like '".$tableName."'");
 		if(empty($result) && !empty($createQuery))    {self::query($createQuery);}
@@ -27,7 +48,7 @@ class DbUpdate extends Db
 	/*
 	 * Teste si un champ existe & le cree au besoin
 	 */
-	public static function fieldExist($tableName, $fieldName, $createQuery=null)
+	private static function fieldExist($tableName, $fieldName, $createQuery=null)
 	{
 		$result=self::getCol("show columns from `".$tableName."` like '".$fieldName."'");
 		if(empty($result) && !empty($createQuery))    {self::query($createQuery);}
@@ -35,45 +56,32 @@ class DbUpdate extends Db
 	}
 
 	/*
-	 * Teste si un champ existe & le renomme au besoin
-	 */
-	public static function fieldRename($tableName, $fieldOldName, $fieldNewName, $renameQuery)
-	{
-		if(self::fieldExist($tableName,$fieldOldName) && self::fieldExist($tableName,$fieldNewName)==false){
-			self::query($renameQuery);
-			return true;
-		}
-	}
-
-	/*
 	 * LANCE LA MISE À JOUR DE LA BDD
 	 */
 	public static function lauchUpdate()
 	{
-		////	INIT LA VERSION DE L'APPLICATION (A OPTIMISER)
-		if(self::tableExist("ap_agora"))							{self::$db_version_agora=self::getVal("select version_agora from ap_agora");}
-		elseif(self::tableExist("gt_agora_info")==false)			{throw new Exception("dbInstall_dbEmpty");}//Bdd vide -> dbInstall!
-		elseif(self::fieldExist("gt_agora_info","version_agora"))	{self::$db_version_agora=self::getVal("select version_agora from gt_agora_info");}//le champs peut ne pas exister!
-		////	LANCE LA MISE A JOUR ?
-		if(version_compare(self::$db_version_agora,VERSION_AGORA,"<"))
+		////	RÉCUP LA VERSION DE L'APPLI && LANCE LA MISE A JOUR?
+		if(self::versionAgoraUpdate())
 		{
-			////	VERIF LA VERSION DE PHP (MIGRATION) && L'ACCES AU FICHIER DE CONFIG
+			////	VERIF DE BASE : VERSION DE PHP SI MIGRATION & ACCES AU FICHIER DE CONFIG
 			Req::verifPhpVersion();
 			if(!is_writable(PATH_DATAS."config.inc.php"))	{echo "<h2>Config file not writable (config.inc.php)</h2>";  exit;}
-			////	CONTROLE SI L'UPDATE EST DEJA EN COURS
-			$currentUpdateFile=PATH_DATAS."currentUpdate.log";
-			if(!is_file($currentUpdateFile))	{file_put_contents($currentUpdateFile,"currentUpdate=true");}
+			////	DOUBLE VERIF (SI l'APPLI A DEJA ETE MAJ PAR UN AUTRE USER.. LE $_SESSION["dbVersionAgora"] DE L'USER COURANT DEVIENT ALORS OBSOLETE!)
+			if(self::versionAgoraUpdate(true)==false)	{$_SESSION=array();  Ctrl::redir("?ctrl=offline");}/*Si ya une connexion auto de l'user, on met à jour de manière transparente : donc pas de "disconnect=true"!*/
+			////	UPDATE EN COURS : NOTIFICATION ET SORTIE DE SCRIPT
+			$updateLOCK=PATH_DATAS."updateLOCK.log";
+			if(!is_file($updateLOCK))	{file_put_contents($updateLOCK,"LOCKING UPDATE - VERROUILAGE DE MISE A JOUR");}
 			else{
-				if((time()-filemtime($currentUpdateFile))<60)	{echo "<br>Update in progress : please wait a few seconds<br><br>Mise à jour en cours : merci d'attendre quelques secondes";}
-				else											{echo "<br>The update generates errors : check the logs of Apache for details.<br>Come back to the previous version and try again the update if the issue is resolved.<br><br>La mise a jour a produit des erreurs : consultez les logs d'Apache pour plus de détails.<br>Revenez sur la version précédente puis relancez la mise à jour si le problème est résolu.";}
+				if((time()-filemtime($updateLOCK))<60)	{echo "<br>Update in progress : please wait a few seconds<br><br>Mise à jour en cours : merci d'attendre quelques secondes";}
+				else									{echo "<br>The update generates errors : check the logs of Apache for details.<br>If the issue is resolved : come back to the previous version, delete the 'DATAS/updateLOCK.log' file, and try again the update procedure.<br><br>La mise a jour a généré des erreurs : consultez les logs d'Apache pour plus de détails.<br>Si le problème est résolu : revenez sur la version précédente, supprimez le fichier 'DATAS/updateLOCK.log', puis relancez la mise à jour.";}
 				exit;
 			}
 			////	PAS D'INTERRUPTION DE SCRIPT
 			ignore_user_abort(true);
-			@set_time_limit(120);//disabled en safemode 
+			@set_time_limit(120);//désactivé en safemode 
 			////	SAUVEGARDE LA BDD && MAJ SI BESOIN LA VERSION 2
 			self::getDump();
-			if(version_compare(self::$db_version_agora,"3.0.0","<"))	{DbUpdateOld::lauchUpdate();}
+			if(version_compare($_SESSION["dbVersionAgora"],"3.0.0","<"))	{DbUpdateOld::lauchUpdate();}
 
 			////	MAJ V3.0.0
 			if(self::updateVersion("3.0.0"))
@@ -254,7 +262,8 @@ class DbUpdate extends Db
 				self::query("ALTER TABLE ap_agora CHANGE `personsSort` `personsSort` VARCHAR(255) DEFAULT NULL");
 				self::query("UPDATE ap_agora SET personsSort='firstName' WHERE personsSort='prenom'");
 				self::query("UPDATE ap_agora SET personsSort='name' WHERE personsSort='nom'");
-				self::query("ALTER TABLE ap_agora CHANGE `dateUpdateDb` `dateUpdateDb` DATE NOT NULL");
+				self::query("UPDATE ap_agora SET dateUpdateDb=null WHERE dateUpdateDb='0'");
+				self::query("ALTER TABLE ap_agora CHANGE `dateUpdateDb` `dateUpdateDb` DATE DEFAULT NULL");
 				self::query("UPDATE ap_agora SET skin='black' WHERE skin='noir'");
 				self::query("UPDATE ap_agora SET skin='white' WHERE skin='blanc' OR skin is null");
 				self::query("UPDATE ap_agora SET timezone=REPLACE(timezone,'.',':')");//"-5.00" devient "-5:00"
@@ -316,7 +325,7 @@ class DbUpdate extends Db
 				//"PAS" DE 10%
 				self::query("UPDATE ap_task SET advancement=ROUND(FLOOR(advancement/10)*10)");
 				//Créé le champs "responsiblePersons"
-				self::fieldExist("ap_task", "responsiblePersons", "ALTER TABLE ap_task ADD responsiblePersons TEXT DEFAULT NULL AFTER budgetEngaged");
+				self::fieldExist("ap_task", "responsiblePersons", "ALTER TABLE ap_task ADD responsiblePersons TEXT DEFAULT NULL");
 				//Récupère les données pour "responsiblePersons"
 				if(self::tableExist("gt_tache_responsable"))
 				{
@@ -334,18 +343,18 @@ class DbUpdate extends Db
 				$descriptionUpdates=array("ap_dashboardNews"=>"dashboardNews", "ap_calendarEvent"=>"calendarEvent", "ap_forumSubject"=>"forumSubject", "ap_forumMessage"=>"forumMessage", "ap_task"=>"task");
 				foreach($descriptionUpdates as $tmpTable=>$objectType)
 				{
-					//Nouveau chemin des fichiers joint (images, mp3 & videos)
+					//Nouveau chemin des fichiers joint (images, mp3, videos)
 					foreach(self::getTab("SELECT * FROM ap_objectAttachedFile WHERE objectType='".$objectType."'") as $tmpFile)
 					{
-						if(File::controlType("imageBrowser",$tmpFile["name"]) || File::controlType("videoPlayer",$tmpFile["name"]) || File::controlType("mp3",$tmpFile["name"]))
+						if(File::isType("imageBrowser",$tmpFile["name"]) || File::isType("mp3",$tmpFile["name"]) || File::isType("videoPlayer",$tmpFile["name"]))
 						{
 							//chemin du fichier joint
 							$fileExtension=".".File::extension($tmpFile["name"]);
-							$oldPath="../".(defined('HOST_DOMAINE')?PATH_DATAS:'stock_fichiers/')."fichiers_objet/".$tmpFile["_id"].$fileExtension;//exple : "../stock_fichiers/fichiers_objet/123.jpg"
-							$newPath="index.php?ctrl=object&action=DisplayAttachedFile&_id=".$tmpFile["_id"]."&extension=".$fileExtension;//exple : "index.php?ctrl=object&action=DisplayAttachedFile&_id=123&extension=.jpg"
+							$oldPath="../".(Ctrl::isHost()?PATH_DATAS:'stock_fichiers/')."fichiers_objet/".$tmpFile["_id"].$fileExtension;//exple : "../stock_fichiers/fichiers_objet/123.jpg"
+							$newPath="index.php?ctrl=object&action=DisplayAttachedFile&_id=".$tmpFile["_id"]."&extension=".$fileExtension;//cf. "MdlObjectAttributes.php"
 							//Mp3 ("url_encode" : lecteur mp3)  ||  Videos 
-							if(File::controlType("mp3",$tmpFile["name"]))	{$newPath=urlencode($newPath);}
-							elseif(File::controlType("videoPlayer",$tmpFile["name"])){
+							if(File::isType("mp3",$tmpFile["name"]))  {$newPath=urlencode($newPath);}
+							elseif(File::isType("videoPlayer",$tmpFile["name"])){
 								$oldPath="../".$oldPath;//Racine depuis le player : "../../"
 								$newPath="../".str_replace("fichiers_objet","objectAttachment",$oldPath);//Racine depuis le player : "../../../"
 							}
@@ -360,7 +369,7 @@ class DbUpdate extends Db
 					$descriptionUpdates[]="description=REPLACE(description,'../divers/tiny_mce/plugins','app/js/tinymce/plugins')";//plugins tinymce
 					$descriptionUpdates[]="description=REPLACE(description,'plugins/emotions','plugins/emoticons')";//idem
 					$descriptionUpdates[]="description=REPLACE(description,'../module_fichier/index.php?id_dossier=','index.php?ctrl=file&targetObjId=fileFolder-')";//liens vers les dossiers de fichiers
-					$descriptionUpdates[]="description=REPLACE(description,'../".(defined('HOST_DOMAINE')?PATH_DATAS:'stock_fichiers/')."gestionnaire_fichiers/','".PATH_MOD_FILE."')";//liens vers les fichiers
+					$descriptionUpdates[]="description=REPLACE(description,'../".(Ctrl::isHost()?PATH_DATAS:'stock_fichiers/')."gestionnaire_fichiers/','".PATH_MOD_FILE."')";//liens vers les fichiers
 					$descriptionUpdates[]="description=REPLACE(description,'stock_fichiers/','DATAS/')";
 					self::query("UPDATE ".$tmpTable." SET ".implode(", ",$descriptionUpdates));
 				}
@@ -418,7 +427,7 @@ class DbUpdate extends Db
 				}
 
 				////	"DATAS/" : RENOMME LES SOUS-DOSSIERS DE "DATAS" && SUPPRIME LE DOSSIER "tmp" && CHMOD RECURSIF
-				clearstatcache();//Réinit avant de faire un "rename()"
+				clearstatcache();//Réinit avant de faire un "rename()"!!
 				$dirsToRename=array("gestionnaire_fichiers"=>PATH_MOD_FILE, "photos_utilisateurs"=>PATH_MOD_USER, "photos_contact"=>PATH_MOD_CONTACT, "fichiers_objet"=>PATH_OBJECT_ATTACHMENT, "fond_ecran"=>PATH_WALLPAPER_CUSTOM);
 				foreach($dirsToRename as $oldDirName=>$newDirPath){
 					$oldDirPath=PATH_DATAS.$oldDirName."/";
@@ -476,7 +485,7 @@ class DbUpdate extends Db
 				fwrite($fp, $majHtaccessBis);
 				fclose($fp);
 				$deleteConst=array("agora_maintenance","controle_ip","duree_livecounter","duree_messages_messenger");
-				if(defined('HOST_DOMAINE'))  {$deleteConst[]="db_host";}
+				if(Ctrl::isHost())  {$deleteConst[]="db_host";}
 				File::updateConfigFile(null,$deleteConst);
 
 				////	MAJ DU LOGO DU FOOTER (POUR CORRESPONDRE AU .htaccess)
@@ -521,22 +530,289 @@ class DbUpdate extends Db
 				}
 			}
 
+			////	MAJ V3.1.5
+			if(self::updateVersion("3.1.5"))
+			{
+				////	MAJ DU "DATAS/.htaccess" ET SUPPR "DATAS/wallpaper/.htaccess"
+				$majHtaccess="Deny from all\n\n<Files ~ '(?i:\.jpg|\.jpeg|\.png|\.gif|\.mp4|\.webm|\.ogg|\.mkv|\.flv)$'>\nAllow from all\n</Files>";
+				file_put_contents(PATH_DATAS.".htaccess", $majHtaccess);
+				File::rm(PATH_DATAS."wallpaper/.htaccess",false);
+				////	TABLE "ap_agora" : "dateUpdateDb" au format "DATETIME"
+				self::query("ALTER TABLE ap_agora CHANGE `dateUpdateDb` `dateUpdateDb` DATETIME DEFAULT NULL");
+			}
 
-			////	CONSIGNES DE MISE A JOUR
-			////	- Modifier "VERSION_AGORA" dans "Params.php" et "RELEASES.txt"
-			////	- Modifier si besoin "ModOffline/install.sql" et "BDD_TEST_V3.x.sql"
+			////	MAJ V3.1.9
+			if(self::updateVersion("3.1.9"))
+			{
+				self::query("ALTER TABLE ap_file CHANGE `downloadsNb` `downloadsNb` INT(10) UNSIGNED NOT NULL DEFAULT '0'");
+			}
+
+			////	MAJ V3.1.10
+			if(self::updateVersion("3.1.10"))
+			{
+				//Update 'ap_userLivecouter' : ajoute 'editObjId' pour le controle de double édition
+				self::fieldExist("ap_userLivecouter", "editObjId", "ALTER TABLE ap_userLivecouter ADD editObjId TINYTEXT DEFAULT NULL AFTER ipAdress");
+				//Update 'ap_userLivecouter' : "_idUser" en cle primaire
+				self::query("TRUNCATE TABLE ap_userLivecouter");//vide la table par precaution
+				$isPrimaryKey=self::getTab("SHOW INDEXES FROM ap_userLivecouter WHERE Key_name LIKE 'PRIMARY'");
+				if(empty($isPrimaryKey))	{self::query("ALTER TABLE ap_userLivecouter ADD PRIMARY KEY (`_idUser`)");}
+			}
+			
+			////	MAJ V3.2.0
+			if(self::updateVersion("3.2.0"))
+			{
+				//Modifie l'affichage du label des modules dans la barre de menu
+				self::query("UPDATE ap_agora SET moduleLabelDisplay='hide' WHERE moduleLabelDisplay is null");
+				self::query("UPDATE ap_agora SET moduleLabelDisplay=null WHERE moduleLabelDisplay is not null AND moduleLabelDisplay NOT LIKE 'hide'");
+				//Fichiers joints : 'downloadsNb' doit avoir une valeur par défaut
+				self::query("ALTER TABLE ap_objectAttachedFile CHANGE `downloadsNb` `downloadsNb` INT(10) UNSIGNED NOT NULL DEFAULT '0'");
+				//Enleve la selection de couleur dans le messenger
+				if(self::fieldExist("ap_userMessengerMessage","color"))  {self::query("ALTER TABLE ap_userMessengerMessage DROP color");}
+				//Enleve la gestion de l'affichage des evts d'agenda
+				if(self::fieldExist("ap_calendar","evtColorDisplay"))  {self::query("ALTER TABLE ap_calendar DROP evtColorDisplay");}
+			}
+
+			////	MAJ V3.2.2
+			if(self::updateVersion("3.2.2"))
+			{
+				//Ajoute le logo en page d'accueil
+				self::fieldExist("ap_agora", "logoConnect", "ALTER TABLE ap_agora ADD logoConnect VARCHAR(255) DEFAULT NULL AFTER logoUrl");
+				//Ajoute le parametrage sendmailFrom & SMTP
+				self::fieldExist("ap_agora", "sendmailFrom", "ALTER TABLE ap_agora ADD sendmailFrom TINYTEXT DEFAULT NULL AFTER logsTimeOut");
+				self::fieldExist("ap_agora", "smtpHost", "ALTER TABLE ap_agora ADD smtpHost TINYTEXT DEFAULT NULL AFTER sendmailFrom");
+				self::fieldExist("ap_agora", "smtpPort", "ALTER TABLE ap_agora ADD smtpPort SMALLINT DEFAULT NULL AFTER smtpHost");
+				self::fieldExist("ap_agora", "smtpSecure", "ALTER TABLE ap_agora ADD smtpSecure TINYTEXT DEFAULT NULL AFTER smtpPort");
+				self::fieldExist("ap_agora", "smtpUsername", "ALTER TABLE ap_agora ADD smtpUsername TINYTEXT DEFAULT NULL AFTER smtpSecure");
+				self::fieldExist("ap_agora", "smtpPass", "ALTER TABLE ap_agora ADD smtpPass TINYTEXT DEFAULT NULL AFTER smtpUsername");
+			}
+			
+			////	MAJ V3.2.3
+			if(self::updateVersion("3.2.3"))
+			{
+				//Modifie les anciennes dénominations des objets ('type') dans les Logs
+				$newTypeNames=array("dashboardNews"=>"actualite", "task"=>"tache", "taskFolder"=>"tache_dossier", "file"=>"fichier", "fileFolder"=>"fichier_dossier", "contactFolder"=>"contact_dossier", "link"=>"lien", "linkFolder"=>"lien_dossier", "forumSubject"=>"sujet", "forumMessage"=>"message", "calendar"=>"agenda", "calendarEvent"=>"evenement");
+				foreach($newTypeNames as $typeNewName=>$typeOldName)  {self::query("UPDATE ap_log SET objectType='".$typeNewName."' WHERE objectType='".$typeOldName."'");}
+				//Suppression des affectations obsoletes aux dossiers racine (résiduelles)
+				self::query("DELETE FROM ap_objectTarget WHERE objectType IN ('fileFolder','contactFolder','taskFolder','linkFolder') AND _idObject='1'");
+				//Users/Contacts : Transfert de 'fax', 'website', 'skills', 'hobbies' dans le champ 'comment'
+				foreach(["ap_user","ap_contact"] as $tmpTable){
+					foreach(["fax","website","skills","hobbies"] as $tmpField){
+						Db::query("UPDATE ".$tmpTable." SET comment=CONCAT(comment, '\r\n-".$tmpField." : ', ".$tmpField.") WHERE comment IS NOT NULL");//'comment' n'est pas null : ajoute à la suite avec retour à la ligne
+						Db::query("UPDATE ".$tmpTable." SET comment=CONCAT('-".$tmpField." : ', ".$tmpField.") WHERE comment IS NULL");					//'comment' est null : ajoute directement les données
+					}
+				}
+				//Simplifie la durée des logs : 15j devient 30j et 60j devient 120j
+				Db::query("UPDATE ap_agora SET logsTimeOut=30 WHERE logsTimeOut=15");
+				Db::query("UPDATE ap_agora SET logsTimeOut=120 WHERE logsTimeOut=60");
+				//Affectations "allSpaces" obsoletes : transfert sur chaque espace
+				$spaceList=Db::getCol("SELECT _id FROM ap_space");
+				foreach(Db::getTab("SELECT * FROM ap_objectTarget WHERE target='allSpaces'") as $tmpAffect){
+					foreach($spaceList as $tmpSpaceId)  {Db::query("INSERT INTO ap_objectTarget SET objectType=".Db::format($tmpAffect["objectType"]).", _idObject=".(int)$tmpAffect["_idObject"].", _idSpace=".(int)$tmpSpaceId.", target='spaceUsers', accessRight=".Db::format($tmpAffect["accessRight"]));}
+				}
+				Db::query("DELETE FROM ap_objectTarget WHERE target='allSpaces'");
+			}
+
+			////	MAJ V3.2.4
+			if(self::updateVersion("3.2.4"))
+			{
+				//Delete les champs obsoletes de "ap_task" : "budgetAvailable" "budgetEngaged" "humanDayCharge"
+				foreach(["budgetAvailable","budgetEngaged","humanDayCharge"] as $tmpField){
+					if(self::fieldExist("ap_task",$tmpField))	{self::query("ALTER TABLE ap_task DROP ".$tmpField);}
+				}
+				//Delete les champs obsoletes de "ap_contact" et "ap_user" : "fax" "website" "skills" "hobbies"
+				foreach(["ap_contact","ap_user"] as $tmpTable){
+					foreach(["fax","website","skills","hobbies"] as $tmpField){
+						if(self::fieldExist($tmpTable,$tmpField))	{self::query("ALTER TABLE ".$tmpTable." DROP ".$tmpField);}
+					}
+				}
+			}
+
+			////	MAJ V3.3.1
+			if(self::updateVersion("3.3.1"))
+			{
+				//Ajoute La table "ap_objectLike"
+				if(self::tableExist("ap_objectLike")==false){
+					self::query("CREATE TABLE ap_objectLike (objectType varchar(255) not null, _idObject mediumint(8) not null, _idUser mediumint(8) not null, value tinyint(1) not null) DEFAULT CHARSET=utf8");
+					self::query("ALTER TABLE ap_objectLike ADD INDEX `indexes` (`objectType`(255), `_idObject`)");
+				}
+				//Ajoute la table "ap_objectComment"
+				if(self::tableExist("ap_objectComment")==false){
+					self::query("CREATE TABLE ap_objectComment	(_id mediumint(8) unsigned not null, objectType varchar(255) not null, _idObject mediumint(8) not null, _idUser mediumint(8) not null, dateCrea datetime not null, comment text not null) DEFAULT CHARSET=utf8");
+					self::query("ALTER TABLE ap_objectComment ADD PRIMARY KEY (`_id`), ADD INDEX `indexes` (`_id`,`objectType`(255), `_idObject`)");
+					self::query("ALTER TABLE ap_objectComment MODIFY _id mediumint(8) unsigned NOT NULL AUTO_INCREMENT");
+				}
+				//Ajoute  "usersLike" et "usersComment" à la table "ap_agora"
+				if(self::fieldExist("ap_agora", "usersLike")==false){
+					self::fieldExist("ap_agora", "usersLike",	"ALTER TABLE ap_agora ADD usersLike varchar(255) DEFAULT NULL AFTER footerHtml");
+					self::fieldExist("ap_agora", "usersComment","ALTER TABLE ap_agora ADD usersComment tinyint DEFAULT NULL AFTER usersLike");
+					self::query("UPDATE ap_agora SET usersLike='likeSimple', usersComment=1");
+				}
+				//Change le type "tinytext" en "varchar(255)"
+				foreach(["sendmailFrom","smtpHost","smtpSecure","smtpUsername","smtpPass","editObjId"] as $tmpField){
+					$tmpTable=($tmpField=="editObjId")  ?  "ap_userLivecouter"  :  "ap_agora";
+					self::query("ALTER TABLE `".$tmpTable."` CHANGE `".$tmpField."` `".$tmpField."` varchar(255) DEFAULT NULL");
+				}
+				//Supprime les logs obsoletes
+				self::query("DELETE FROM ap_log WHERE action='consult2'");
+			}
+
+			////	MAJ V3.3.5 (et aussi V3.3.4 pour la gestion des "icon")
+			if(self::updateVersion("3.3.5"))
+			{
+				// MAJ DU "DATAS/.htaccess" (flv pour la rétrocompatibilité)
+				$majHtaccess="Deny from all\n\n<Files ~ '(?i:\.jpg|\.jpeg|\.png|\.gif|\.mp3|\.mp4|\.webm|\.flv)$'>\nAllow from all\n</Files>";
+				file_put_contents(PATH_DATAS.".htaccess", $majHtaccess);
+				// Ajout du champ de gestion des icones de dossiers
+				foreach(["ap_contactFolder","ap_fileFolder","ap_linkFolder","ap_taskFolder"] as $tmpTable)
+					{self::fieldExist($tmpTable, "icon", "ALTER TABLE ".$tmpTable." ADD icon VARCHAR(255) DEFAULT NULL AFTER description");}
+			}
+			
+			////	MAJ V3.4.1
+			if(self::updateVersion("3.4.1"))
+			{
+				// Ajoute le type d'outil de cartographie utilisé (Gmap ou Leaflet) et l'Identifiant utilisé (pour gmap)
+				self::fieldExist("ap_agora", "mapTool",		"ALTER TABLE ap_agora ADD mapTool varchar(255) DEFAULT 'gmap' AFTER usersComment");
+				self::fieldExist("ap_agora", "mapApiKey",	"ALTER TABLE ap_agora ADD mapApiKey varchar(255) DEFAULT NULL AFTER mapTool");
+			}
+			////	MAJ V3.4.2
+			if(self::updateVersion("3.4.2"))
+			{
+				//Ajoute le parametrage Google Signin
+				self::fieldExist("ap_agora", "gSignin",			"ALTER TABLE ap_agora ADD gSignin tinyint DEFAULT NULL AFTER mapApiKey");
+				self::fieldExist("ap_agora", "gSigninClientId",	"ALTER TABLE ap_agora ADD gSigninClientId varchar(255) DEFAULT NULL AFTER gSignin");//uniquement pour AP
+				self::fieldExist("ap_agora", "gPeopleApiKey",	"ALTER TABLE ap_agora ADD gPeopleApiKey varchar(255) DEFAULT NULL AFTER gSigninClientId");//idem
+				if(Ctrl::isHost())  {self::query("UPDATE ap_agora SET gSignin=1");}
+			}
+			////	MAJ V3.4.3
+			if(self::updateVersion("3.4.3"))
+			{
+				// MAJ DU "DATAS/.htaccess"
+				$majHtaccess="order allow,deny \n\n <Files ~ '\.(?i:jpg|jpeg|png|gif|mp3|mp4|webm|flv)$'> \n allow from all \n </Files>";
+				file_put_contents(PATH_DATAS.".htaccess", $majHtaccess);
+				// Suppression du champ "ap_user">"ipControlAdresses"
+				if(self::fieldExist("ap_user","ipControlAdresses"))  {self::query("ALTER TABLE ap_user DROP ipControlAdresses");}
+			}
+			////	MAJ V3.4.4
+			if(self::updateVersion("3.4.4"))
+			{
+				//Ajoute le brouillon/draft de l'éditeur tinyMce
+				self::fieldExist("ap_userLivecouter", "editorDraft", "ALTER TABLE ap_userLivecouter ADD editorDraft TEXT DEFAULT NULL AFTER editObjId");
+				self::fieldExist("ap_userLivecouter", "draftTargetObjId", "ALTER TABLE ap_userLivecouter ADD draftTargetObjId TINYTEXT DEFAULT NULL AFTER editorDraft");
+			}
+			////	MAJ V3.5.0
+			if(self::updateVersion("3.5.0"))
+			{
+				//Supprime l'ancien champ de réinit de password
+				if(self::fieldExist("ap_user","_idNewPassword"))  {self::query("ALTER TABLE ap_user DROP _idNewPassword");}
+				//Ajoute la table de sondage "ap_dashboardPoll"
+				if(self::tableExist("ap_dashboardPoll")==false){
+					self::query("CREATE TABLE ap_dashboardPoll (_id mediumint(8) unsigned NOT NULL,  title varchar(200) NOT NULL,  description varchar(2000) DEFAULT NULL,  dateEnd date DEFAULT NULL,  multipleResponses tinyint(1) unsigned DEFAULT NULL,  newsDisplay tinyint(1) unsigned DEFAULT NULL,  dateCrea datetime NOT NULL,  _idUser mediumint(8) unsigned NOT NULL,  dateModif datetime DEFAULT NULL,  _idUserModif mediumint(8) unsigned DEFAULT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+					self::query("ALTER TABLE ap_dashboardPoll ADD PRIMARY KEY (_id)");
+					self::query("ALTER TABLE ap_dashboardPoll MODIFY _id mediumint(8) unsigned NOT NULL AUTO_INCREMENT");
+				}
+				//Ajoute la table de sondage "ap_dashboardPollResponse"
+				if(self::tableExist("ap_dashboardPollResponse")==false){
+					self::query("CREATE TABLE ap_dashboardPollResponse (_id varchar(255) NOT NULL,  _idPoll mediumint(8) unsigned NOT NULL,  label varchar(500) NOT NULL,  rank tinyint(2) unsigned NOT NULL,  fileName varchar(200) DEFAULT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+					self::query("ALTER TABLE ap_dashboardPollResponse ADD PRIMARY KEY (_id(20))");
+				}
+				//Ajoute la table de sondage "ap_dashboardPollResponseVote"
+				if(self::tableExist("ap_dashboardPollResponseVote")==false){
+					self::query("CREATE TABLE ap_dashboardPollResponseVote (_idUser mediumint(8) unsigned NOT NULL,  _idResponse varchar(255) NOT NULL,  _idPoll mediumint(8) unsigned NOT NULL) ENGINE=InnoDB DEFAULT CHARSET=utf8");
+					self::query("ALTER TABLE ap_dashboardPollResponseVote ADD PRIMARY KEY (_idUser,_idResponse(20))");
+					$createPollTable=true;
+				}
+				//Créé un exemple de sondage
+				if(!empty($createPollTable)){
+					self::query("INSERT INTO ap_dashboardPoll SET _id=1, title=".Db::format(Txt::trad("INSTALL_dataDashboardPoll")).", _idUser=1, newsDisplay=1, dateCrea=NOW()");
+					self::query("INSERT INTO ap_dashboardPollResponse (_id, _idPoll, label, rank) VALUES ('5bd1903d3df9u8t',1,".Db::format(Txt::trad("INSTALL_dataDashboardPollA")).",1), ('5bd1903d3e11dt5',1,".Db::format(Txt::trad("INSTALL_dataDashboardPollB")).",2), ('5bd1903d3e041p7',1,".Db::format(Txt::trad("INSTALL_dataDashboardPollC")).",3)");
+					self::query("INSERT INTO ap_objectTarget (objectType, _idObject, _idSpace, target, accessRight) VALUES ('dashboardPoll', 1, 1, 'spaceUsers', 1)");
+				}
+				//Créé le dossier "DATAS/modDashboard"
+				if(!file_exists(PATH_MOD_DASHBOARD)){
+					$isCreated=mkdir(PATH_MOD_DASHBOARD);
+					if($isCreated==true)  {File::setChmod(PATH_MOD_DASHBOARD);}
+				}
+				//Modifie le nom de certaines options de module
+				self::query("UPDATE ap_joinSpaceModule SET options=REPLACE(options,'ajout_utilisateurs_groupe','allUsersAddGroup')");
+				self::query("UPDATE ap_joinSpaceModule SET options=REPLACE(options,'ajout_actualite_admin','adminAddNews')");
+				self::query("UPDATE ap_joinSpaceModule SET options=REPLACE(options,'ajout_agenda_ressource_admin','adminAddRessourceCalendar')");
+				self::query("UPDATE ap_joinSpaceModule SET options=REPLACE(options,'ajout_categorie_admin','adminAddCategory')");
+				self::query("UPDATE ap_joinSpaceModule SET options=REPLACE(options,'ajout_sujet_admin','adminAddSubject')");
+				self::query("UPDATE ap_joinSpaceModule SET options=REPLACE(options,'ajout_sujet_theme','allUsersAddTheme')");
+				self::query("UPDATE ap_joinSpaceModule SET options=REPLACE(options,'AdminRootFolderAddContent','adminRootAddContent')");
+				//Rétablir le chemin des emoticones de tinymce
+				foreach(["ap_dashboardNews","ap_forumMessage","ap_forumSubject"] as $tmpTable)	{self::query("UPDATE ".$tmpTable." SET description=REPLACE(description,'tinymce_4.8.2','tinymce')");}
+			}
+			////	MAJ V3.6.3
+			if(self::updateVersion("3.6.3"))
+			{
+				//Supprime les tables "guest" dans les table ou il est présent (avec "_idUser"), sauf dans la table "ap_calendarEvent"
+				foreach(self::getCol("SHOW TABLES LIKE 'ap_%'") as $tmpTable){
+					if(self::fieldExist($tmpTable,"guest") && self::fieldExist($tmpTable,"_idUser") && $tmpTable!="ap_calendarEvent")  {self::query("ALTER TABLE ".$tmpTable." DROP guest");}
+				}
+				//Corrige l'accès aux emoticons sur AP v3.5.0 (tinyMce v4.8.2)
+				foreach(["ap_dashboardNews","ap_calendarEvent","ap_forumSubject","ap_forumMessage","ap_task"] as $tmpTable)  {self::query("UPDATE ".$tmpTable." SET description=REPLACE(description,'app/js/tinymce_4.8.2/','app/js/tinymce/')");}
+				//Corrige les traductions des sondages par défaut
+				self::query("UPDATE ap_dashboardPoll SET title=REPLACE(title,'What do you think of the new survey tool?','".Txt::trad("INSTALL_dataDashboardPoll")."')");
+				self::query("UPDATE ap_dashboardPollResponse SET label=REPLACE(label,'Essential !',".Db::format(Txt::trad("INSTALL_dataDashboardPollA"))."),  label=REPLACE(label,'Pretty interesting',".Db::format(Txt::trad("INSTALL_dataDashboardPollB"))."),  label=REPLACE(label,'Not very useful',".Db::format(Txt::trad("INSTALL_dataDashboardPollC")).")");
+				//Affecte le sondage par défaut à tous les espaces disponibles
+				foreach(Db::getCol("SELECT _id FROM ap_space WHERE _id NOT IN (select _idSpace from ap_objectTarget where objectType='dashboardPoll' and _idObject=1)") as $_idSpace)  {self::query("INSERT INTO ap_objectTarget (objectType, _idObject, _idSpace, target, accessRight) VALUES ('dashboardPoll', 1, ".(int)$_idSpace.", 'spaceUsers', 1)");}
+				//Suppression de l'ancien champ "personalCalendarsDisabled"
+				if(self::fieldExist("ap_agora","personalCalendarsDisabled"))  {self::query("ALTER TABLE ap_agora DROP personalCalendarsDisabled");}
+			}
+			////	MAJ V3.6.5
+			if(self::updateVersion("3.6.5"))
+			{
+				//Correction du champ "guest" pour les propositions d'événements
+				self::fieldExist("ap_calendarEvent","guest",		"ALTER TABLE ap_calendarEvent ADD guest varchar(255) DEFAULT NULL AFTER _idUser");
+				//Fichiers : Ajoute un champ pour la liste des personnes ayant téléchargé un fichier
+				self::fieldExist("ap_file","downloadedBy",			"ALTER TABLE ap_file ADD downloadedBy varchar(10000) DEFAULT NULL AFTER downloadsNb");
+				//Sondage : Ajoute une option pour pouvoir afficher le résultat de chaque votant 
+				self::fieldExist("ap_dashboardPoll","publicVote",	"ALTER TABLE ap_dashboardPoll ADD publicVote tinyint(1) DEFAULT NULL AFTER newsDisplay");
+				//Suppression des affectations obsoletes aux dossiers racine (résiduelles)
+				self::query("DELETE FROM ap_objectTarget WHERE objectType IN ('fileFolder','contactFolder','taskFolder','linkFolder') AND _idObject='1'");
+			}
+			////	MAJ V3.7.0
+			if(self::updateVersion("3.7.0"))
+			{
+				//Durée par défaut des logs : 120 jours
+				Db::query("UPDATE ap_agora SET logsTimeOut=120 WHERE logsTimeOut=30");
+				//Modifie la préférence d'affichage de l'agenda : "3days" devient "4days"
+				Db::query("UPDATE ap_userPreference SET value='4days' WHERE keyVal='calendarDisplayMode' AND value='3days'");
+				//Augmente la taille max des commentaires des logs à 1000 caractères
+				Db::query("ALTER TABLE ap_log CHANGE `comment` `comment` VARCHAR(1000) DEFAULT NULL");
+			}
+			////	MAJ V3.7.1
+			if(self::updateVersion("3.7.1"))
+			{
+				//Supprime les votes sur les anciens sondages "fantome"
+				Db::query("DELETE FROM ap_dashboardPollResponseVote WHERE _idPoll=0");
+				//Ajoute le support des 'emoji' dans les messages du messenger : cf. 'utf8mb4'
+				if(version_compare(PHP_VERSION,7,">="))  {Db::query("ALTER TABLE ap_userMessengerMessage CHANGE `message` `message` TEXT CHARACTER SET utf8mb4");}
+			}
+			////	MAJ V3.7.2
+			if(self::updateVersion("3.7.2"))
+			{
+				//Ajoute le paramétrage du serveur Jitsi
+				self::fieldExist("ap_agora", "visioHost", "ALTER TABLE ap_agora ADD visioHost varchar(255) DEFAULT NULL AFTER logsTimeOut");
+			}
+			///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			////!!!!	MODIFIER SI BESOIN LA BDD "ModOffline/db.sql"	!!!!!!!!!!!!
+			////!!!!	MODIFIER LE NUMERO DE VERSION DANS  "app/Common/Params.php" + "app/Common/VueStructure.php" + "app/js/common-3.x.x.js"  +  "app/css/common-3.x.x.js" + "RELEASES.txt"
+			///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+			///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
 
 
 			////	MAJ "dateUpdateDb" && "version_agora"
 			self::query("UPDATE ap_agora SET dateUpdateDb=".Db::dateNow().", version_agora='".VERSION_AGORA."'");
-			////	SUPPRIME $currentUpdateFile
-			File::rm($currentUpdateFile);
+			////	SUPPRIME $updateLOCK
+			File::rm($updateLOCK);
 			////	OPTIMISE LES TABLES
 			foreach(self::getCol("SHOW TABLES LIKE 'ap_%'") as $tableName)    {self::query("OPTIMIZE TABLE `".$tableName."`");}
-			////	MESSAGE DE NOTIF + INIT LA SESSION + REDIRECTION
-			Ctrl::addNotif(Txt::trad("MSG_NOTIF_update")." <br><br>".round((microtime(true)-TPS_EXEC_BEGIN),2)." sec.");
-			Ctrl::initSession(false);
-			Ctrl::redir("?disconnect=1");
+			////	REINIT LA SESSION & REDIRECTION
+			$_SESSION=[];
+			Ctrl::redir("?ctrl=offline");
 		}
 	}
 }

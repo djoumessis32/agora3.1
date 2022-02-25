@@ -1,12 +1,14 @@
-<div class="navContainer">
-	<div class="navMenu sBlock">
-		<!--PRECEDENT-->
-		<a <?= $previousAttr ?>><img src="app/img/navPrevious.png"></a>
-		<!--NUMÉROS DE PAGE-->
-		<?php for($pageNbTmp=1; $pageNbTmp<=$pageNbTotal; $pageNbTmp++){ ?>
-			<a href="<?= $hrefBase.$pageNbTmp ?>" class="<?= $pageNb==$pageNbTmp?"sLinkSelect":"sLink" ?>" title="<?= Txt::trad("aller_page")." ".$pageNbTmp ?>"><?= $pageNbTmp ?></a>
-		<?php } ?>
-		<!--PRECEDENT-->
-		<a <?= $nextAttr ?>><img src="app/img/navNext.png"></a>
+<style>
+.vNavMenuDisabled	{opacity:0.4;}
+</style>
+
+<div class="objBottomMenu">
+	<div class="miscContainer">
+		<?php
+		////	PRECEDENT / NUMÉROS DE PAGE / SUIVANT
+		echo "<a ".$prevAttr."><img src='app/img/navPrev.png'></a>";
+		for($pageNbTmp=1; $pageNbTmp<=$pageNbTotal; $pageNbTmp++)	{echo "<a href=\"".$hrefBase.$pageNbTmp."\" class=\"".($pageNb==$pageNbTmp?"sLinkSelect":"sLink")."\" title=\"".Txt::trad("goToPage")." ".$pageNbTmp."\">".$pageNbTmp."</a>";}
+		echo "<a ".$nextAttr."><img src='app/img/navNext.png'></a>";
+		?>
 	</div>
 </div>

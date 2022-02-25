@@ -1,5 +1,5 @@
-<script type="text/javascript">
-lightboxWidth(600);//Resize
+<script>
+lightboxSetWidth(550);//Resize
 </script>
 
 <style>
@@ -7,14 +7,16 @@ lightboxWidth(600);//Resize
 .percentBar			{margin:10px 15px 0px 0px;}/*Surcharge common.css*/
 </style>
 
-<div class="fancyboxContent">
-	<div class="lightboxObjTitle">
-		<?php if($curObj->editRight()){ ?><a href="javascript:lightboxOpen('<?= $curObj->getUrl("edit") ?>')" class="lightboxObjEditIcon" title="<?= Txt::trad("modifier") ?>"><img src="app/img/edit.png"></a><?php } ?>
-		<?= $curObj->title ?>
-	</div>
-	<hr class="hrGradient hrMargins">
-	<?= !empty($curObj->description) ? $curObj->description."<hr class='hrGradient hrMargins'>" : null ?>
-	<div class="vTaskDetails">
-		<?= $curObj->responsiblePersons(true).$curObj->budgetEngagedAvailable(true).$curObj->advancementHumanDayCharge(true).$curObj->dateBeginEnd(true) ?>
-	</div>
+<div class="lightboxContent">
+	<?php
+	////	MENU CONTEXTUEL/D'EDITION  &&  TITRE
+	echo $curObj->menuContextEdit()."<div class='lightboxTitle'>".$curObj->priority()." ".$curObj->title."</div>";
+
+	////	DESCRIPTION / PERSONNES RESPONSABLES / AVANCEMENT / DATES DEBUT & FIN / FICHIERS JOINTS
+	if(!empty($curObj->description))	{echo $curObj->description."<hr>";}
+	echo "<div class='vTaskDetails'>";
+		echo $curObj->responsiblePersons(true).$curObj->advancement(true).$curObj->dateBeginEnd(true);
+	echo "</div>";
+	echo $curObj->menuAttachedFiles();
+	?>
 </div>

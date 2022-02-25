@@ -1,12 +1,20 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
- * Classe Db : Gère les connexions à la base de données
+ * Classe de connexion à la bdd
  */
 class Db
 {
 	private static $_objPDO=null;
-	public static $readsNb=null;
-	public static $writesNb=null;
+	//public static $readsNb=null;
+	//public static $writesNb=null;
 
 	/*
 	 * renvoie l'objet PDO initialisé qu'une seule fois
@@ -17,9 +25,11 @@ class Db
 		if(self::$_objPDO===null){
 			//Connection PDO
 			try{
-				//Aucune bdd n'est spécifiée : dbInstall!  /  Sinon tente d'établir une connexion
+				//Utilise l'encodage "utf8mb4" pour les emojis sur mobile ("utf8" pour les versions inférieures à PHP 7 : cf. hosting Free.fr)
+				$dbCharset=(version_compare(PHP_VERSION,7,">="))  ?  "utf8mb4"  :  "utf8";
+				//Aucune bdd n'est spécifiée : dbInstall!  /  Sinon on établit une connexion
 				if(!defined("db_name") || !db_name)	{throw new Exception("dbInstall_dbNameUndefined");}
-				else								{self::$_objPDO=new PDO("mysql:host=".db_host.";dbname=".db_name.";charset=utf8", db_login, db_password, array(PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION));}
+				else								{self::$_objPDO=new PDO("mysql:host=".db_host.";dbname=".db_name.";charset=".$dbCharset, db_login, db_password, array(PDO::ATTR_ERRMODE=>PDO::ERRMODE_EXCEPTION));}
 				//Pas de connexion, ni d'exception : dbInstall!
 				if(!is_object(self::$_objPDO))	{throw new Exception("dbInstall_pdoIsNull");}
 			}
@@ -32,7 +42,7 @@ class Db
 	}
 
 	/*
-	 * Exécute une requête SQL (insert/update/etc)
+	 * Exécute une requête SQL (insert/update/delete/etc)
 	 */
 	public static function query($sqlQuery, $returnLastInsertId=false)
 	{
@@ -55,13 +65,10 @@ class Db
 	 */
 	public static function getObjTab($objectType, $sqlQuery)
 	{
+		//"getObj" pour récupérer l'objet en cache s'il a déjà été chargé (donc pas de "FETCH_CLASS").
 		$returnTab=[];
 		$result=self::objPDO()->query($sqlQuery);
-		//Pas de "FETCH_CLASS", sinon pas de mise en cache des objets. NOTE: les champs des autres tables ne seront pas ajoutées à l'objet (cf. requetes avec jointure)
-		foreach($result->fetchAll(PDO::FETCH_ASSOC) as $dbFields){
-			$tmpObj=Ctrl::getObj($objectType, $dbFields);
-			$returnTab[$tmpObj->_id]=$tmpObj;//Id de l'objet en key?
-		}
+		foreach($result->fetchAll(PDO::FETCH_ASSOC) as $objValues)  {$returnTab[$objValues["_id"]]=Ctrl::getObj($objectType, $objValues);}
 		return $returnTab;
 	}
 
@@ -92,46 +99,14 @@ class Db
 		$record=$result->fetch(PDO::FETCH_NUM);
 		return $record[0];
 	}
-
-	/*
-	 * Sauvegarde la Bdd
-	 */
-	public static function getDump()
-	{
-		//Path
-		$dumpPath=PATH_DATAS."BackupMysql_".db_name.".sql";
-		//Linux/windows
-		if(Tool::linuxEnv() && function_exists("exec"))  {exec("mysqldump --user=".db_login." --password=".db_password." --host=".db_host." ".db_name." > ".$dumpPath);}
-		else
-		{
-			// Recupere chaque table
-			$tabDump=[];
-			foreach(self::getCol("SHOW TABLES FROM `".db_name."`") as $tableName)
-			{
-				// Structure de la table
-				$createTable=self::getLine("SHOW CREATE TABLE ".$tableName);
-				$tabDump[]=str_replace(array("\r","\n"),"",$createTable["Create Table"]).";";
-				// Contenu de la table
-				foreach(self::getTab("SELECT * FROM ".$tableName) as $record){
-					$tmpInsert="INSERT INTO ".$tableName." VALUES(";
-					foreach($record as $fieldRecord)	{$tmpInsert.=($fieldRecord=="") ? "NULL," : self::objPDO()->quote($fieldRecord).",";}//pas de "empty()" car doit enregistrer aussi "0"
-					$tabDump[]=trim($tmpInsert,",").");";
-				}
-			}
-			// Transforme le tableau en texte,  Enregistre le fichier sql,  Retourne le chemin du fichier
-			$fp=fopen($dumpPath, "w");
-			fwrite($fp, implode("\n", $tabDump));
-			fclose($fp);
-		}
-		return $dumpPath;
-	}
 	
 	/*
-	 * Version de MySQL														(ex "db_version()")
+	 * Numéro de version de MySQL
 	 */
 	public static function dbVersion()
 	{
-		return self::objPDO()->getAttribute(PDO::ATTR_SERVER_VERSION);
+		$dbVersion=self::objPDO()->getAttribute(PDO::ATTR_SERVER_VERSION);
+		return str_replace(strstr($dbVersion,"-"),null,$dbVersion);//Enlève les détails après "-" (ex: "5.5.5-10.1.26-MariaDB-0+deb9u1")
 	}
 
 	/*
@@ -140,12 +115,12 @@ class Db
 	public static function format($text, $options=null)
 	{
 		$text=trim($text);
-		if(empty($text))	{return "NULL";}
+		if(empty($text))  {return "NULL";}
 		else{
 			//Filtre le résultat
-			if(!stristr($options,"editor"))							{$text=htmlspecialchars(strip_tags($text));}//Enleve les balises (html/xml/etc)  &  Convertit les caractères spéciaux en HTML ("<" devient "&lt;") => complementaire au "strip_tags" precedent
-			if(stristr($options,"float"))							{$text=str_replace(",",".",$text);}			//Remplace les virgules par des points (valeur flottante)
-			if(stristr($options,"url") && !stristr($text,"http"))	{$text="http://".$text;}					//Ajoute "http://" dans l'url
+			if(!stristr($options,"editor"))							{$text=htmlspecialchars(strip_tags($text));}//Input basic : enlève les balises html et convertit les caractères spéciaux ('€'->'&#128;')
+			if(stristr($options,"float"))							{$text=str_replace(",",".",$text);}			//Valeur flottante : remplace les virgules par des points
+			if(stristr($options,"url") && !stristr($text,"http"))	{$text="http://".$text;}					//Url : ajoute "http://"
 			if(stristr($options,"likeSearch"))						{$text="%".$text."%";}						//Search : délimite par des "%"
 			//Formate une date provenant d'un datepicker + timepicker?
 			if(stristr($options,"datetime"))	{$text=Txt::formatDate($text,"inputDatetime","dbDatetime");}
@@ -177,5 +152,43 @@ class Db
 	public static function dateNow()
 	{
 		return "'".strftime("%Y-%m-%d %H:%M:%S")."'";
+	}
+	
+	
+	/***************************************************************************************************************************/
+	/*******************************************	SPECIFIC METHODS	********************************************************/
+	/***************************************************************************************************************************/
+
+	/*
+	 * Sauvegarde la Bdd
+	 */
+	public static function getDump()
+	{
+		//Path
+		$dumpPath=PATH_DATAS."BackupMysql_".db_name.".sql";
+		//Linux & exec activé
+		if(Tool::linuxEnv() && Ctrl::isHost())  {exec("mysqldump --user=".db_login." --password=".db_password." --host=".db_host." ".db_name." > ".$dumpPath);}
+		else
+		{
+			// Recupere chaque table
+			$tabDump=[];
+			foreach(self::getCol("SHOW TABLES FROM `".db_name."`") as $tableName)
+			{
+				// Structure de la table
+				$createTable=self::getLine("SHOW CREATE TABLE ".$tableName);
+				$tabDump[]=str_replace(array("\r","\n"),"",$createTable["Create Table"]).";";
+				// Contenu de la table
+				foreach(self::getTab("SELECT * FROM ".$tableName) as $record){
+					$tmpInsert="INSERT INTO ".$tableName." VALUES(";
+					foreach($record as $fieldRecord)	{$tmpInsert.=($fieldRecord=="") ? "NULL," : self::objPDO()->quote($fieldRecord).",";}//pas de "empty()" car doit enregistrer aussi "0"
+					$tabDump[]=trim($tmpInsert,",").");";
+				}
+			}
+			// Transforme le tableau en texte,  Enregistre le fichier sql,  Retourne le chemin du fichier
+			$fp=fopen($dumpPath, "w");
+			fwrite($fp, implode("\n", $tabDump));
+			fclose($fp);
+		}
+		return $dumpPath;
 	}
 }

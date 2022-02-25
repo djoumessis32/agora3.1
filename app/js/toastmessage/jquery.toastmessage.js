@@ -1,18 +1,3 @@
-/*
- * Copyright 2010 akquinet
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *   http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 /**
  *  This JQuery Plugin will help you in showing some nice Toast-Message like notification messages. The behavior is
  *  similar to the android Toast class.
@@ -57,8 +42,8 @@
 {
 	var settings = {
 				inEffect: 			{opacity: 'show'},	// in effect
-				inEffectDuration: 	600,				// in effect duration in miliseconds
-				stayTime: 			3000,				// time in miliseconds before the item has to disappear
+				inEffectDuration: 	200,				// in effect duration in miliseconds
+				stayTime: 			4000,				// time in miliseconds before the item has to disappear
 				text: 				'',					// content of the item. Might be a string or a jQuery object. Be aware that any jQuery object which is acting as a message will be deleted when the toast is fading away.
 				sticky: 			false,				// should the toast item sticky or not?
 				type: 				'notice', 			// notice, warning, error, success
@@ -86,8 +71,11 @@
 			toastWrapAll	= (!$('.toast-container').length) ? $('<div></div>').addClass('toast-container').addClass('toast-position-' + localSettings.position).appendTo('body') : $('.toast-container');
 			toastItemOuter	= $('<div></div>').addClass('toast-item-wrapper');
 			toastItemInner	= $('<div></div>').hide().addClass('toast-item toast-type-' + localSettings.type).appendTo(toastWrapAll).html($('<p>').append (localSettings.text)).animate(localSettings.inEffect, localSettings.inEffectDuration).wrap(toastItemOuter);
-			toastItemClose	= $('<div></div>').addClass('toast-item-close').prependTo(toastItemInner).html(localSettings.closeText).click(function() { $().toastmessage('removeToast',toastItemInner, localSettings) });
+			toastItemClose	= $('<div></div>').addClass('toast-item-close').prependTo(toastItemInner).html(localSettings.closeText).click(function() { $().toastmessage('removeToast',toastItemInner, localSettings); });
 			toastItemImage  = $('<div></div>').addClass('toast-item-image').addClass('toast-item-image-' + localSettings.type).prependTo(toastItemInner);
+			
+			/////	FERME LE MESSAGE AU CLICK DU TEXT
+			$(".toast-item-wrapper").click(function() { $().toastmessage('removeToast',toastItemInner, localSettings); });
 
             if(navigator.userAgent.match(/MSIE 6/i))
 			{

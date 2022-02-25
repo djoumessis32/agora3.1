@@ -1,28 +1,30 @@
-<script type="text/javascript">
-lightboxWidth(550);//Resize
+<script>
+////	Resize
+lightboxSetWidth(550);
 </script>
 
 <style>
-.percentBar				{margin:10px 15px 0px 0px;}/*idem*/
-.objField>.fieldLabel	{font-weight:normal;}/*idem*/
-.vUserImg,.vUserDetails	{display:table-cell;}
-.vUserImg img			{max-width:150px;}
-.vUserDetails			{padding-left:15px; line-height:25px;}
+.vAdminLabel		{text-align:center;}
+.vAdminLabel hr		{margin-top:30px; margin-bottom:10px;}
+.vAdminLabel span	{font-style:italic; margin-left:5px;}
 </style>
 
-<div class="fancyboxContent">
-	<div class="lightboxObjTitle">
-		<?php if($curObj->editRight()){ ?><a href="javascript:lightboxOpen('<?= $curObj->getUrl("edit") ?>')" class="lightboxObjEditIcon" title="<?= Txt::trad("modifier") ?>"><img src="app/img/edit.png"></a><?php } ?>
-		<?= $curObj->display("all") ?>
-	</div>
-	<hr class="hrGradient hrMargins">
-	<div class="vUserImg"><?= $curObj->getImg() ?></div>
-	<div class="personDetails vUserDetails">
-		<?= $curObj->getFields("profile") ?>
-		<div class="objField">
-			<div class="fieldLabel"><img src="app/img/user/userConnection.png"> <?= Txt::trad("USER_lastConnection") ?></div>
-			<div class="fieldValue"><?= !empty($curObj->lastConnection) ? Txt::displayDate($curObj->lastConnection) : Txt::trad("USER_pas_connecte") ?></div>
-		</div>
-	</div>
-	<?= $curObj->menuAttachedFiles() ?>
+<div class="lightboxContent objVueBg">
+	<?php
+	////	MENU CONTEXTUEL/D'EDITION  &&  TITRE
+	echo $curObj->menuContextEdit()."<div class='lightboxTitle'>".$curObj->getLabel("all")."</div>";
+
+	////	IMAGE & DETAILS DE l'USER
+	echo "<div class='personLabelImg'>".$curObj->getImg()."</div>";
+	echo "<div class='personVueFields'>".$curObj->getFieldsValues("profile")."</div>";
+
+	////	GROUPES D'UTILISATEURS
+	$groupsLabel=null;
+	foreach(MdlUserGroup::getGroups(null,$curObj) as $tmpGroup)  {$groupsLabel.="<img src='app/img/arrowRight.png'> ".$tmpGroup->title."<br>";}
+	if(!empty($groupsLabel))  {echo "<div class='objField'><div class='fieldLabel'><img src='app/img/user/userGroup.png'> ".Txt::trad("USER_userGroups")."</div><div>".$groupsLabel."</div></div>";}
+	
+	////	ADMIN GENERAL/D'ESPACE
+	if($curObj->isAdminGeneral())	{echo "<div class='vAdminLabel'><hr><img src='app/img/user/adminGeneral.png'> ".Txt::trad("USER_adminGeneral")."</div>";}
+	elseif($curObj->isAdminSpace())	{echo "<div class='vAdminLabel'><hr><img src='app/img/user/adminSpace.png'> ".Txt::trad("USER_adminSpace")." <span>".Ctrl::$curSpace->name."</span></div>";}
+	?>
 </div>

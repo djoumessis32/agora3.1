@@ -1,17 +1,39 @@
-<div class="moduleMenuLine sLink">
-	<div class="moduleMenuIcon"><img src="app/img/sort.png"></div>
-	<div class="moduleMenuTxt">
-		<div class="menuContext sBlock" id="vMenuSort">
+<style>
+.menuSortAscDesc	{text-align:right!important;}
+</style>
+
+<div class="menuLine sLink">
+	<div class="menuIcon"><img src="app/img/sort.png"></div>
+	<div>
+		<span class="menuLaunch" for="menuSort<?= $menuSortId=Txt::uniqId() ?>"><?= Txt::trad("sortBy")." ".Txt::trad("SORT_".$curSortField) ?> <img src="app/img/sort<?= ucfirst($curSortAscDesc)?>.png"></span>
+		<div  class="menuContext" id="menuSort<?= $menuSortId ?>">
 			<?php
+			//Affiche chaque option de Tri
 			foreach($sortFields as $tmpSort)
 			{
-				echo "<div class='menuContextLine ".($curSort==$tmpSort["sort"]?'sLinkSelect':'sLink')."' onclick=\"redir('".$tmpSort["url"]."')\">".
-						Txt::trad("SORT_".$tmpSort["field"]).
-						" <img src='app/img/sort".ucfirst($tmpSort["ascDesc"]).".png' title=\"".Txt::trad($tmpSort["ascDesc"]=="asc"?"tri_ascendant":"tri_descendant")."\">
-					  </div>";
+				//Affiche le "field" qu'une fois (car présent 2 fois dans le $sortFields : "asc" et "desc")
+				$tmpSortTab=Txt::txt2tab($tmpSort);
+				$fieldTmp=$tmpSortTab[0];
+				if(empty($fieldLast) || $fieldLast!=$fieldTmp)
+				{
+					//Init l'affichage de l'option
+					$classLabel	=($fieldTmp==$curSortField)  ?  "sLinkSelect"  :  "sLink";
+					$imgAsc		=($fieldTmp==$curSortField && $curSortAscDesc=="asc")   ?  "sortAscSelect.png"  :  "sortAsc.png";
+					$imgDesc	=($fieldTmp==$curSortField && $curSortAscDesc=="desc")  ?  "sortDescSelect.png"  :  "sortDesc.png";
+					$urlSort=Tool::getParamsUrl("sort").$addUrlParams."&sort=".$fieldTmp."@@";//Prépare l'url des redirections
+					//Affiche l'option : Champ avec les images "Asc" et "Desc"
+					echo "<div class='menuLine'>
+							<div class='".$classLabel."' onclick=\"redir('".$urlSort.(stristr($curSort,'asc')?'desc':'asc')."')\">".Txt::trad("sortBy2")." ".Txt::trad("SORT_".$fieldTmp)."</div>
+							<div class='menuSortAscDesc'>
+								<img src='app/img/".$imgAsc."' title=\"".Txt::trad("tri_ascendant")."\" onclick=\"redir('".$urlSort."asc')\">
+								<img src='app/img/".$imgDesc."' title=\"".Txt::trad("tri_descendant")."\" onclick=\"redir('".$urlSort."desc')\">
+							</div>
+						</div>";
+				}
+				//Retient le dernier "field" listé
+				$fieldLast=$fieldTmp;
 			}
 			?>
 		</div>
-		<span class="sLink menuContextLauncher" for="vMenuSort"><?= Txt::trad("trie_par")." ".Txt::trad("SORT_".$curSortTab[0]) ?> <img src="app/img/sort<?= ucfirst($curSortTab[1])?>.png"></span>
 	</div>
 </div>

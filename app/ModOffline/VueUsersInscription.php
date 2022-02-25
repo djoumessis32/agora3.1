@@ -1,45 +1,49 @@
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(430);
+lightboxSetWidth(450);
 
-////	Contrôle du formulaire
-function formControl()
-{
-	// Certains champs sont obligatoire
-	if($("input[name='name']").isEmpty())		{displayNotif("<?= Txt::trad("USER_specifyName"); ?>");  return false;}
-	if($("input[name='firstName']").isEmpty())	{displayNotif("<?= Txt::trad("USER_specifyFirstName"); ?>");  return false;}
-	// Verif mail & verif Ajax s'il existe déjà (car utilisé comme identifiant..)
-	if($("input[name='mail']").isEmpty() || !isMail($("input[name='mail']").val()))   {displayNotif("<?= Txt::trad("mail_pas_valide"); ?>");  return false;}
-	var ajaxUrl="?ctrl=misc&action=UserAccountExist&mail="+encodeURIComponent($("input[name='mail']").val());
-	var ajaxResult=$.ajax({url:ajaxUrl,async:false}).responseText;//Retour Ajax obligatoire pour passer à la suite : async:false
-	if(find("true",ajaxResult))   {displayNotif("<?= Txt::trad("USER_mail_deja_present"); ?>");  return false;}
-	// Verif mot de passe
-	if($("input[name='password']").isEmpty() || $("input[name='password']").val()!=$("input[name='passwordVerif']").val())   {displayNotif("<?= Txt::trad("USER_specifier_password"); ?>");  return false;}
-	// Vérif du captcha
-	if(captchaControl()==false)    {return false;}
-}
+////	INIT
+$(function(){
+	////	Contrôle du formulaire
+	$("#usersInscriptionForm").submit(function(event){
+		//Pas de validation par défaut du formulaire
+		event.preventDefault();
+		//Verif les champs obligatoires et l'email/login
+		if($("input[name='name']").isEmpty() || $("input[name='firstName']").isEmpty())  {notify("<?= Txt::trad("fillAllFields") ?>","warning");  return false;}
+		if($("input[name='mail']").isMail()==false)  {notify("<?= Txt::trad("mailInvalid") ?>","warning");  return false;}
+		//Vérif le password et sa confirmation
+		if(isValidPassword($("input[name='password']").val())==false)						{notify("<?= Txt::trad("passwordInvalid") ?>","warning");		return false;}
+		else if($("input[name='password']").val()!=$("input[name='passwordVerif']").val())	{notify("<?= Txt::trad("passwordConfirmError") ?>","warning");	return false;}
+		//Valide le formulaire (et controle si l'user existe déjà)
+		$.ajax({url:"index.php",data:$(this).serialize(),dataType:"json"}).done(function(resultJson){
+			if(resultJson.redirSuccess)		{parent.redir(resultJson.redirSuccess);}
+			else if(resultJson.notifError)	{notify(resultJson.notifError,"warning");}
+		});
+	});
+});
 </script>
 
 <style>
-select, input[type=text], input[type=password], textarea	{margin-bottom:15px;}
-.formValidate	{margin-top:15px;}
+select, input, textarea	{margin-bottom:15px!important;}
+input, textarea			{width:100%!important;}
+.formValidate			{margin-top:15px;}
 </style>
 
 
-<div class="lightboxTitle"><?= ucfirst(Txt::trad("usersInscription_espace")) ?></div>
-
-<form action="index.php" method="post" id="userInscription" OnSubmit="return formControl();">
+<form id="usersInscriptionForm" class="lightboxContent noConfirmClose">
+	<div class="lightboxTitle"><?= ucfirst(Txt::trad("userInscriptionSpace")) ?></div>
+	
 	<select name="_idSpace">
 		<?php foreach($objSpacesInscription as $tmpSpace){ ?>
 		<option value="<?= $tmpSpace->_id ?>" title="<?= $tmpSpace->description ?>"><?= $tmpSpace->name ?></option>
 		<?php } ?>
 	</select><br>
-	<input type="text" name="name" class="editInputText" placeholder="<?= Txt::trad("name"); ?>"><br>
-	<input type="text" name="firstName" class="editInputText" placeholder="<?= Txt::trad("firstName"); ?>"><br>
-	<input type="text" name="mail" class="editInputText" placeholder="<?= Txt::trad("mail"); ?>"><br>
+	<input type="text" name="name" placeholder="<?= Txt::trad("name"); ?>"><br>
+	<input type="text" name="firstName" placeholder="<?= Txt::trad("firstName"); ?>"><br>
+	<input type="text" name="mail" placeholder="<?= Txt::trad("mail"); ?>"><br>
 	<input type="password" name="password" class="editInputPassword" placeholder="<?= Txt::trad("password"); ?>"><br>
 	<input type="password" name="passwordVerif" class="editInputPassword" placeholder="<?= Txt::trad("passwordVerif"); ?>"><br>
-	<textarea name="message" class="editInputText" placeholder="<?= Txt::trad("comment"); ?>"><?= Req::getParam("message") ?></textarea><br>
+	<textarea name="message" placeholder="<?= Txt::trad("comment"); ?>"><?= Req::getParam("message") ?></textarea><br>
 	<?= CtrlMisc::menuCaptcha() ?>
-	<?= Txt::formValidate("valider") ?>
+	<?= Txt::submitButton() ?>
 </form>

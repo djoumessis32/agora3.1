@@ -1,19 +1,17 @@
-<script type="text/javascript">
-lightboxWidth(600);//Resize
+<script>
+lightboxSetWidth(550);//Resize
 </script>
 
-<style>
-hr	{margin:8px 0px 8px 0px;}
-</style>
-
-<form action="index.php" method="post" onsubmit="return finalFormControl()" enctype="multipart/form-data">
-	<!--CHAMPS PRINCIPAUX-->
-	<?= $curObj->getFields("edit") ?>
+<form action="index.php" method="post" onsubmit="return mainFormControl()" enctype="multipart/form-data" class="lightboxContent">
+	<!--TITRE RESPONSIVE-->
+	<?php echo $curObj->editRespTitle("CONTACT_addContact"); ?>
+	
 	<!--IMAGE-->
-	<div class="objField personImgSelect">
-		<div class="fieldLabel"><?= $curObj->getImg() ?></div>
-		<div class="fieldValue"><?= $curObj->displayImgMenu() ?></div>
+	<div class="objField">
+		<div class="fieldLabel"><?= $curObj->hasImg()  ?  "<div class='personLabelImg'>".$curObj->getImg()."</div>"  :  "<img src='app/img/person/photo.png'> ".Txt::trad("picture") ?></div>
+		<div><?= $curObj->displayImgMenu() ?></div>
 	</div>
-	<!--MENU COMMUN-->
-	<?= $curObj->menuEditValidate() ?>
+	<hr>
+	<!--CHAMPS PRINCIPAUX & MENU COMMUN-->
+	<?php echo $curObj->getFieldsValues("edit").$curObj->menuEdit() ?>
 </form>

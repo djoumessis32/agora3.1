@@ -1,36 +1,28 @@
-<script type="text/javascript">
-lightboxWidth(600);//Resize
+<script>
+lightboxSetWidth(550);
 </script>
 
 <style>
-.lightboxObjTitle	{line-height:20px;}
-.vEventDescription	{margin-top:10px; font-weight:normal;}
-.vEventDetails		{line-height:20px;}
-.percentBar			{margin:10px 15px 0px 0px;}/*Surcharge common.css*/
+.vEventDetails img	{max-width:18px;}
 </style>
 
-<div class="fancyboxContent">
+<div class="lightboxContent">
+	<?php
+	////	MENU CONTEXTUEL/D'EDITION  &&  TITRE
+	echo $curObj->menuContextEdit()."<div class='lightboxTitle'>".$curObj->title."</div>";
 
-	<!--ICONE EDIT / DATE / PERIODICITE-->
-	<div class="lightboxObjTitle">
-		<?php if($curObj->editRight()){ ?><a href="javascript:lightboxOpen('<?= $curObj->getUrl("edit") ?>')" class="lightboxObjEditIcon" title="<?= Txt::trad("modifier") ?>"><img src="app/img/edit.png"></a><?php } ?>
-		<?= Txt::displayDate($curObj->dateBegin,"full",$curObj->dateEnd) ?>
-		<?= !empty($labelPeriod) ? "<br>".$labelPeriod : null ?>
-	</div>
+	////	DATE / PERIODICITE
+	echo "<div class='vEventDetails'><img src='app/img/calendar/clock.png'> &nbsp; ".Txt::displayDate($curObj->dateBegin,"full",$curObj->dateEnd)."</div>";
+	if(!empty($labelPeriod))	{echo "<hr><div class='vEventDetails'>".$labelPeriod."</div>";}
 	
-	<!--TITRE / DESCRIPTION / CATEGORIE-->
-	<hr class="hrGradient hrMargins">
-	<div class="vEventTitle">
-		<?= !empty($labelCategory) ? $labelCategory." : " : null ?>
-		<?= $curObj->title ?>
-		<?= !empty($curObj->important) ? "<img src='app/img/important.png' title=\"".Txt::trad("important")."\"" : null?>
-	</div>
-	<div class="vEventDescription"><?= $curObj->description ?></div>
-	
-	<!--VISIBILITE-->
-	<?= !empty($contentVisible) ? "<hr class='hrGradient hrMargins'>".$contentVisible : null ?>
+	////	IMPORTANT / CATEGORIE
+	if($curObj->important)	{echo "<hr><div class='vEventDetails'><img src='app/img/important.png'> ".Txt::trad("important")."</div>";}
+	if($labelCategory)		{echo "<hr><div class='vEventDetails'>".$labelCategory."</div>";}
 
-	<!--AFFECTATIONS AUX AGENDAS-->
-	<hr class="hrGradient hrMargins">
-	<?= $curObj->affectedCalendarsLabel() ?>
+	////	AFFECTATIONS AUX AGENDAS / VISIBILITE SPECIALE / DESCRIPTION / VISIBILITE SPECIALE / FICHIERS JOINTS
+	if(Ctrl::$curUser->isUser())		{echo "<hr><div class='vEventDetails'><img src='app/img/calendar/iconSmall.png'>&nbsp; ".$curObj->affectedCalendarsLabel()."</div>";}
+	if(!empty($contentVisible))			{echo "<hr><div class='vEventDetails'>".$contentVisible."</div>";}
+	if(!empty($curObj->description))	{echo "<hr>".$curObj->description;}
+	echo $curObj->menuAttachedFiles();
+	?>
 </div>

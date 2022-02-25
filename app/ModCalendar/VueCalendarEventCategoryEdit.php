@@ -1,71 +1,83 @@
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(600);
+lightboxSetWidth(600);
 
-////	Init la page
+////	INIT
 $(function(){
-	//Applique les couleurs de chaque titre, en fonction du champ color "hidden"
+	////	Applique les couleurs de chaque titre, en fonction du champ color "hidden"
 	$("input[name='title']").each(function(){
 		$(this).css("background-color", $("#color-"+this.id.replace("title-","")).val());
 	});
-});
 
-////	Controle du formulaire
-function formControl(targetObjId)
-{
-	//Vérif la présence du titre
-	if($("#form-"+targetObjId+" [name='title']").isEmpty()){
-		displayNotif("<?= Txt::trad("champs_obligatoire")." : ".Txt::trad("title") ?>");
-		$("#form-"+targetObjId+" [name='title']").fieldFocus();
-		return false;
-	}
-	//Au moins un espace sélectionné
-	if($("#form-"+targetObjId+" [name='spaceList[]']:checked").length==0){
-		displayNotif("<?= Txt::trad("selectionner_espace") ?>");
-		return false;
-	}
-}
+	////	Controle du formulaire
+	$("form").submit(function(){
+		//Vérif la présence du titre
+		if($(this).find("[name='title']").isEmpty()){
+			notify("<?= Txt::trad("requiredFields")." : ".Txt::trad("title") ?>");
+			$(this).find("[name='title']").focusRed();
+			return false;
+		}
+		//Au moins un espace sélectionné
+		if($(this).find("[name='spaceList[]']:checked").length==0){
+			notify("<?= Txt::trad("selectSpace") ?>");
+			return false;
+		}
+	});
+});
 </script>
 
 <style>
-form							{margin:30px 0px 0px 10px; width:93%; padding:10px; border: #999 1px solid;}
-#form-calendarEventCategory-0	{display:none;}/*masque la premiere categorie : nouvelle categorie*/
-.labelDetail					{font-size:90%; margin-top:8px;}
-input[name='title']				{width:40%; margin-bottom:5px; color:#fff;}
-input[name='description']		{width:99%; margin-bottom:5px;}
-.vCategoryAutor		{float:right; font-style:italic;}
-.formButtons		{margin-top:10px; text-align:right;}
-button				{width:120px;}
-[src*='delete.png']	{margin-left:10px;}
-#addCategory		{margin-top:30px; margin-right:10px; text-align:center;}
+/*formulaires*/
+.miscContainer					{margin-top:40px; padding:10px; border:#999 1px solid;}
+.miscContainer:last-of-type		{display:none; border:#999 2px solid;}/*masque le dernier formulaire : ajout d'element'*/
+input[name='title']				{width:300px; max-width:80%; color:#fff;}
+input[name='description']		{width:100%; margin-top:15px; margin-bottom:5px;}
+.vAutorSubmit					{display:table; width:100%; margin-top:20px;}
+.vAutorSubmit>div				{display:table-cell; vertical-align:middle;}
+.vAutorSubmit>div:first-child	{font-style:italic; font-weight:normal;}
+.vAutorSubmit>div:last-child	{text-align:right;}
+.vAutorSubmit button			{width:120px; margin-right:10px;}
+/*Ajout d'element*/
+#addElem						{margin-top:50px; text-align:center;}
+#addElem button					{width:200px; height:50px;}
+
+/*RESPONSIVE FANCYBOX (440px)*/
+@media screen and (max-width:440px){
+	.vAutorSubmit, .vAutorSubmit>div  {display:block; margin-top:20px;}
+}
 </style>
 
-<div class="lightboxTitle">
-	<img src="app/img/category.png"> <?= Txt::trad("CALENDAR_gerer_categories") ?>
-	<div class="labelDetail"><?= Txt::trad("CALENDAR_droit_gestion_categories") ?></div>
-</div>
 
-<!--LISTE LES CATEGORIES-->
-<?php foreach($categoriesList as $tmpCategory){ ?>
-	<form action="index.php" method="post" class="sBlock" id="form-<?= $tmpCategory->tmpId ?>" OnSubmit="return formControl('<?= $tmpCategory->tmpId ?>');">
-		<!--AUTEUR & TITRE-->
-		<div class="vCategoryAutor"><?= $tmpCategory->createdBy ?></div>
-		<input type="text" name="title" value="<?= $tmpCategory->title ?>" id="title-<?= $tmpCategory->tmpId ?>" placeholder="<?= Txt::trad("title") ?>">
-		<!--COLOR PICKER & DESCRIPTION-->
-		<?= Tool::colorPicker("title-".$tmpCategory->tmpId,"color-".$tmpCategory->tmpId,"background-color") ?>
-		<input type="hidden" name="color" id="color-<?= $tmpCategory->tmpId ?>" value="<?= $tmpCategory->color ?>">
-		<input type="text" name="description" value="<?= $tmpCategory->description ?>" placeholder="<?= Txt::trad("description") ?>">
-		<!--ESPACES-->
-		<?= $tmpCategory->menuSpaceAffectation() ?>
-		<!--VALIDATION/SUPPRESSION-->
-		<div class="formButtons">
-			<input type="hidden" name="targetObjId" value="<?= $tmpCategory->tmpId ?>">
-			<?= ($tmpCategory->isNew()) ? Txt::formValidate("ajouter",false) : Txt::formValidate("modifier",false) ?>
-			<?php if($tmpCategory->isNew()==false){ ?><img src="app/img/delete.png" class="sLink" title="<?= Txt::trad("supprimer") ?>" onclick="if(confirm('<?= Txt::trad("confirmDelete",true) ?>')) {lightboxClose(true,'<?= $tmpCategory->getUrl("delete") ?>');}"><?php } ?> 
-		</div>
-	</form>
-<?php } ?>
+<div class="lightboxContent">
+	<div class="lightboxTitle"><img src="app/img/category.png"> <?= Txt::trad("CALENDAR_editCategories") ?></div>
+	
+	<div class="infos"><?= Txt::trad("CALENDAR_editCategoriesRight") ?></div>
 
-<div id="addCategory">
-	<button onclick="$('#form-calendarEventCategory-0').slideToggle(100);$('#form-calendarEventCategory-0 [name=title]').focus();"><?= Txt::trad("ajouter") ?></button>	
+	<?php
+	////	LISTE LES CATEGORIES
+	foreach($categoriesList as $tmpCategory)
+	{
+		//Init
+		$colorPickerTextId="title-".$tmpCategory->tmpId;
+		$colorPickerHiddenId="color-".$tmpCategory->tmpId;
+		$buttonsSubmitDelete=($tmpCategory->isNew())  ?  Txt::submitButton("add",false)  :  Txt::submitButton("modify",false);
+		if($tmpCategory->isNew()==false)  {$buttonsSubmitDelete.="<img src='app/img/delete.png' class='sLink' title=\"".Txt::trad("delete")."\" onclick=\"if(confirm('".Txt::trad("confirmDelete",true)."')){lightboxClose('".$tmpCategory->getUrl("delete")."');}\">";}
+		//Affichage du formulaire
+		echo "<form action='index.php' method='post' class='miscContainer'>
+				<input type='text' name='title' value=\"".$tmpCategory->title."\" id='".$colorPickerTextId."' placeholder=\"".Txt::trad("title")."\">
+				".Tool::colorPicker($colorPickerTextId,$colorPickerHiddenId,"background-color")."
+				<input type='hidden' name='color' id='".$colorPickerHiddenId."' value='".$tmpCategory->color."'>
+				<input type='text' name='description' value=\"".$tmpCategory->description."\" placeholder=\"".Txt::trad("description")."\">
+				".$tmpCategory->menuSpaceAffectation()."
+				<div class='vAutorSubmit'>
+					<div>".$tmpCategory->createdBy."</div>
+					<div>".$buttonsSubmitDelete."<input type='hidden' name='targetObjId' value='".$tmpCategory->tmpId."'></div>
+				</div>
+			  </form>";
+	}
+	?>
+
+	<div id="addElem">
+		<button onclick="$('form:last-of-type').slideToggle();$('form:last-of-type [name=title]').focus();"><img src="app/img/plus.png"> <?= Txt::trad("CALENDAR_addCategory") ?></button>	
+	</div>
 </div>

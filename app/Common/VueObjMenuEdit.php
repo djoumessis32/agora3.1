@@ -1,7 +1,25 @@
-<script type="text/javascript">
+<script>
 $(function(){
-	////	Affectations : Click du Label
-	$("[id^='spaceBlock']:visible label").on("click",function(){
+	////	ONGLETS / OPTIONS (chaque onglet ".objMenuLabel" doit avoir un "for" correspondant à l'Id de son div)
+	if($("#objMenuLabels").exist())
+	{
+		//Change de menu
+		$(".objMenuLabel").click(function(){
+			//Réinit les autres menus
+			$(".objMenuLabel").not(this).each(function(){
+				$("#"+$(this).attr("for")).hide();
+				$(this).addClass("objMenuLabelUnselect");
+			});
+			//Affiche le block sélectionné
+			$("#"+$(this).attr("for")).show();//Affichage direct (pas de "fadeIn" car trop lent)
+			$(this).removeClass("objMenuLabelUnselect");
+		});
+		//Affiche le menu du premier onglet
+		$(".objMenuLabel:first-child").trigger("click");
+	}
+
+	////	AFFECTATIONS : CLICK DE LABEL
+	$(".vSpaceTable:visible .vSpaceLabel").click(function(){
 		//Init
 		var boxRead		 ="#objectRightBox_"+this.id+"_1";
 		var boxWriteLimit="#objectRightBox_"+this.id+"_15";
@@ -11,69 +29,82 @@ $(function(){
 		if(!$(boxRead).prop("disabled") && !$(boxRead).prop("checked") && !$(boxWriteLimit).prop("checked") && !$(boxWrite).prop("checked"))	{boxToCheck=boxRead;}		//"1" actif && tout est décochées
 		else if(!$(boxWriteLimit).prop("disabled") && !$(boxWriteLimit).prop("checked") && !$(boxWrite).prop("checked"))						{boxToCheck=boxWriteLimit;}	//"1.5" actif && "1.5" décoché && "2" décoché
 		else if(!$(boxWrite).prop("disabled")  &&  !$(boxWrite).prop("checked")  &&  ( ($(boxRead).prop("disabled") && $(boxWriteLimit).prop("disabled")) || ($(boxRead).prop("checked") && $(boxWriteLimit).prop("disabled")) || $(boxWriteLimit).prop("checked")))	{boxToCheck=boxWrite;}	//"2" actif && "2" décoché &&  ( ("1" inatif & "1.5" inatif) || ("1" coché & "1.5" inactif) || "1.5" coché)
-		//Uncheck toutes les boxes, Check la box sélectionnée
-		$("[id^='objectRightBox_"+this.id+"']").prop("checked",false);
-		if(boxToCheck!=null)	{$(boxToCheck).prop("checked",true).trigger("change");}//"trigger" pour lancer si besoin des actions au changement de checkboxes
-		//Style des labels & controle des droits
-		labelStyleRightControl();
+		//Check la box sélectionnée (avec trigger sur la box)  OU  Uncheck toutes les boxes et Stylise toute la sélection
+		if(boxToCheck!=null)	{$(boxToCheck).prop("checked",true).trigger("change");}
+		else					{$("[id^='objectRightBox_"+this.id+"']").prop("checked",false).trigger("change");}
 	});
 
-	////	Affectations : Click de checkbox
-	$("[id^='spaceBlock']:visible [id^='objectRightBox']").change(function(){
-		var targetId=$(this).val().slice(0, $(this).val().lastIndexOf("_"));//exple "1_U2_1.5" => "1_U2"
+	////	AFFECTATIONS : CLICK DE CHECKBOX
+	$(".vSpaceTable:visible [id^='objectRightBox']").change(function(){
+		var objectRight=$(this).val();
+		var targetId=objectRight.slice(0, objectRight.lastIndexOf("_"));//exple "1_U2_1.5" => "1_U2"
 		$("[id^='objectRightBox_"+targetId+"']").not(this).prop("checked",false);//"uncheck" les autres checkbox du "target"
-		labelStyleRightControl();//Style des labels & controle des droits
+		labelStyleRightControl(this.id);//Style des labels & Controle des droits
 	});
 
-	////	Selectionne un nouveau fichier joint
-	$("input[name^='newAttachedFile']").change(function(){
+	////	SELECTIONNE UN NOUVEAU FICHIER JOINT
+	$("input[name^='addAttachedFile']").change(function(){
 		//Fichier OK : affiche l'input suivant et affiche au besoin "insertion dans le text" (+ Check par défaut)
-		if($(this).isEmpty()==false && this.files[0].size < <?= File::uploadMaxFilesize() ?>)
+		if(this.files && this.files[0].size < <?= File::uploadMaxFilesize() ?>)
 		{
-			var cptFile=Math.round(this.name.replace("newAttachedFile",""));
+			var cptFile=Math.round(this.name.replace("addAttachedFile",""));
 			var fileExtension=extension($(this).val());
-			$("#newAttachedFile"+(cptFile+1)).fadeIn(200);
-			if($("#newAttachedFileOptions"+cptFile).exist() && $.inArray(fileExtension,['<?= implode("','",File::fileTypes("attachedFileInsert")) ?>'])!==-1){
-				$("#newAttachedFileOptions"+cptFile).css("display","inline-block");
-				$("#newAttachedFileInsert"+cptFile+":not(:checked)").trigger("click");
+			var acceptedExtensions=['<?= implode("','",File::fileTypes("attachedFileInsert")) ?>'];
+			if($("#addAttachedFileInsert"+cptFile).exist() && $.inArray(fileExtension,acceptedExtensions)!==-1){
+				$("#addAttachedFileDiv"+cptFile+" .addAttachedFileInsertOpt").show();
+				$("#addAttachedFileInsert"+cptFile+":not(:checked)").trigger("click");
 			}
+			$("#addAttachedFileDiv"+(cptFile+1)).fadeIn();
 		}
 	});
 
-	////	Affiche/Masque les blocks d'espaces
-	//Masque les espaces sans affectations (sauf espace courant)
-	$("[id^='spaceBlock']").each(function(){
-		if(this.id!="spaceBlock<?= Ctrl::$curSpace->_id ?>" && $("#"+this.id+" [name='objectRight[]']:checked").length==0)	{$(this).css("display","none");}
-	});
-	//montre "Afficher tous les espaces"?
-	if($("[id^='spaceBlock']:hidden").length>0)  {$("#showAllSpaces").fadeIn(200).effect("pulsate",{times:4},4000);}
-	//Click sur "Afficher tous les espaces"
-	$("#showAllSpaces").on("click",function(){
-		$("#showAllSpaces").css("display","none");
-		$("[id^='spaceBlock']").fadeIn(200);
+	////	AFFICHE TOUS LES USERS D'UN ESPACE
+	$(".vShowAllUsers").click(function(){
+		$($(this).attr("for")+" .vSpaceHideTarget").hide().removeClass("vSpaceHideTarget").fadeIn();//Enlève la class pour masquer les users puis raffiche avec un fadeIn
+		$(this).hide();//Masque le menu pour afficher tous les users
+		lightboxResize();//Resize le lightbox
 	});
 
-	////	Init la page
+	////	AFFICHE/MASQUE LES BLOCKS D'ESPACES
+	//Masque par défaut tous les espaces sans affectations (sauf espace courant)
+	$("[id^=spaceTable]").each(function(){
+		if(this.id!="spaceTable<?= Ctrl::$curSpace->_id ?>" && $("#"+this.id+" [name='objectRight[]']:checked").length==0)  {$(this).hide();}
+	});
+	//Masque si besoin le menu "Afficher tous mes espaces"
+	if($(".vSpaceTable:hidden").exist())  {$("#ShowAllSpaces").fadeIn();}
+	//Click sur "Afficher tous mes espaces"
+	$("#ShowAllSpaces").click(function(){
+		$(this).hide();//Masque le menu
+		$('[id^=spaceTable]').fadeIn();//Affiche tous les blocks d'espace
+		$(".vSpaceTitle .vSpaceLabel").removeClass("vSpaceLabelHide");//Raffiche le nom de l'espace courant (masqué par défaut)
+	});
+
+	////	INIT LA PAGE
 	//Masque et désactive les droits "boxWriteLimit"
 	<?php if($curObj::isContainer()==false){ ?>
 		$("[name='objectRight[]'][value$='_1.5']").prop("disabled",true);
-		$(".vSpaceTargetWriteLimit").css("display","none");
+		$(".vSpaceWriteLimit").hide();
 	<?php } ?>
 	//Init le style des labels
 	labelStyleRightControl();
-	//Focus sur le premier champ obligatoire (fin de text)
-	<?php if(!empty($curObj::$requiredFields))  {echo "$('input[name=".$curObj::$requiredFields[0]."]').focus().val($('input[name=".$curObj::$requiredFields[0]."]').val());";} ?>
+	//Fixe la hauteur minimum : évite à "lightboxResize()" de jouer si on passe d'un gros menu à un plus petit..
+	$("#objMenuBlocks").css("min-height",$("#objMenuBlocks").height());
+	//Focus sur le premier champ obligatoire
+	<?php if(!empty($curObj::$requiredFields)){ ?>
+		if(!isMobile()){//Pas en responsive pour ne pas afficher le clavier virtuel
+			setTimeout(function(){ $("input[name='<?=$curObj::$requiredFields[0] ?>']").focus(); },300);//Timeout pour Edge et FF
+		}
+	<?php } ?>
 });
 
-////	Stylise les labels et controle les droits d'accès
-function labelStyleRightControl()
+////	STYLISE LES LABELS ET CONTROLE LES DROITS D'ACCÈS
+function labelStyleRightControl(boxId)
 {
-	notifAdviceRight=null;
 	//Réinitialise les class des lignes et labels
-	$("[id^='spaceBlock']:visible label").removeClass("sAccessRead sAccessWriteLimit sAccessWrite");
-	$("[id^='spaceBlock']:visible [id^=targetLine]").removeClass("sTableRowSelect");
-	//Stylise les label des checkbox sélectionnées
-	$(":checkbox[name='objectRight[]']:checked").each(function(){
+	$(".vSpaceTable:visible .vSpaceLabel").removeClass("sAccessRead sAccessWriteLimit sAccessWrite");
+	$(".vSpaceTable:visible [id^=targetLine]").removeClass("sLineSelect");
+	//Stylise les labels des checkbox sélectionnées
+	$("[name='objectRight[]']:checked").each(function(){
 		//Récupère le droit de la checkbox && l'id du label correspondant
 		var targetRight=this.id.split('_').pop();
 		var targetLabelId=this.id.substring(0, this.id.lastIndexOf('_')).replace('objectRightBox_','');
@@ -82,271 +113,301 @@ function labelStyleRightControl()
 		else if(targetRight=="15")	{$("#"+targetLabelId).addClass("sAccessWriteLimit");}
 		else if(targetRight=="2")	{$("#"+targetLabelId).addClass("sAccessWrite");}
 		//Ligne sélectionnée : surligne
-		$("#targetLine"+targetLabelId).addClass("sTableRowSelect");
-		//Sujet du forum & droit ecriture & pas l'user courant : "Le droit en écriture permet d'effacer TOUS les messages du sujet!"
-		if(targetRight=="2" && targetLabelId!="2_U<?= Ctrl::$curUser->_id ?>" && "<?= $curObj::objectType ?>"=="forumSubject")
-			{notifAdviceRight="<?= Txt::trad("EDIT_OBJET_alert_ecriture_deconseille") ?>";}
+		$("#targetLine"+targetLabelId).addClass("sLineSelect");
+		//Sujet du forum : affiche "preférez le droit écriture limité" ?	=> pas un droit "écriture limité"  & box que l'on vient de sélectionner (pas les pré-sélections)
+		if("<?= $curObj::objectType ?>"=="forumSubject" && targetRight!="15" && boxId && boxId==this.id)
+			{notify("<?= Txt::trad("FORUM_accessRightInfos") ?>");}
 	});
-	if(notifAdviceRight!==null)  {displayNotif(notifAdviceRight);}
+	//Control Ajax d'une affectation (droit d'accès) pour un sous dossier
+	<?php if($curObj::isFolder && $curObj->containerObj()->isRootFolder()==false){ ?>
+	if(boxId && $("#"+boxId).prop("checked")){
+		$.ajax({url:"?ctrl=object&action=AccessRightParentFolder&targetObjId=<?= $curObj->containerObj()->_targetObjId ?>&objectRight="+$("#"+boxId).val(), dataType:"json"}).done(function(result){
+			if(result.error)  {notify(result.message);}
+		});
+	}
+	<?php } ?>
 }
 
-////	Suppression d'un fichier joint
+////	SUPPRESSION D'UN FICHIER JOINT
 function deleteAttachedFile(_id)
 {
-	if(confirm("<?= Txt::trad("confirmDelete") ?>")){
-		var ajaxUrl="?ctrl=object&action=deleteAttachedFile&_id="+_id;
-		var ajaxResult=$.ajax({url:ajaxUrl,async:false}).responseText;//Retour Ajax obligatoire pour passer à la suite : async:false
-		if(find("true",ajaxResult)){
-			$("#menuAttachedFile"+_id).fadeOut(200);
-			tinymce.activeEditor.dom.remove("tagAttachedFile"+_id);//pas besoin de "#" pour select l'id
+	//Demande confirmation
+	if(confirm("<?= Txt::trad("confirmDelete") ?>")==false)  {return false;}
+	//Lance la suppression et efface le fichier lorsque c'est fait
+	$.ajax("?ctrl=object&action=deleteAttachedFile&_id="+_id).done(function(result){
+		if(find("ok",result)){
+			$("#menuAttachedFile"+_id).fadeOut();//Supprime le fichier de la liste
+			tinymce.activeEditor.dom.remove("tagAttachedFile"+_id);//Supprime éventuellement l'image dans l'éditeur (pas besoin de "#" pour selectionner l'id)
 		}
-	}
+	});
 }
 
-////	Controle final du formulaire	(ex "Controle_Menu_Objet()")
-function finalFormControl()
+////	CONTROLE FINAL DU FORMULAIRE
+function mainFormControl()
 {
 	//Init
 	var validForm=true;
-	////	Verif des champs obligatoires (s'ils sont spécifiés)
+
+	////	Verif les champs obligatoires. Si ya des champs vides : "focusRed()" et notification sur les champs concernés
 	var notifRequiredFields="";
-	<?php foreach($curObj::$requiredFields as $tmpField){?>
-	var isEmptyField=<?= ($tmpField==$curObj::htmlEditorField)  ?  "isEmptyEditor('".$curObj::htmlEditorField."');"  :  "$(\"[name='".$tmpField."']\").isEmpty();" ?>//champs tinyMce OU input "text"
-	if($("[name='<?= $tmpField ?>']").exist() && isEmptyField==true){
-		notifRequiredFields+="<br><?= Txt::trad($tmpField) ?>";
-		$("[name='<?= $tmpField ?>']").fieldFocus();
-		validForm=false;
+	<?php
+	foreach($curObj::$requiredFields as $tmpField){
+		$isEmptyField=($tmpField==$curObj::htmlEditorField)  ?  "isEmptyEditor('".$curObj::htmlEditorField."')"  :  "$('[name=".$tmpField."]').isEmpty()";
+		echo "if($('[name=".$tmpField."]').exist() && ".$isEmptyField.")   {validForm=false;  $('[name=".$tmpField."]').focusRed();  notifRequiredFields+=\"&nbsp;".Txt::trad($tmpField)."<br>\";}";
 	}
-	<?php } ?>
-	//Notif pour les champs obligatoires vides
-	if(notifRequiredFields.length>0)	{displayNotif("<?= Txt::trad("champs_obligatoire") ?> : "+notifRequiredFields);}
-	////	Controle le formatage des dates
+	?>
+	//Notify sur les champs vides
+	if(notifRequiredFields.length>0)  {notify("<?= Txt::trad("requiredFields") ?> : "+notifRequiredFields);}
+
+	////	Controle si besoin les mail
+	if($("input[name='mail']").isEmpty()==false && $("input[name='mail']").isMail()==false)   {validForm=false;  notify("<?= Txt::trad("mailInvalid"); ?>");}
+
+	////	Controle si besoin le formatage des dates
 	$(".dateInput,.dateBegin,.dateEnd").each(function(){
-		if(this.value.length>0)
-		{
-			var matches=/^\d{2}\/\d{2}\/\d{4}$/.exec(this.value);
-			if(matches==null){
-				displayNotif("<?= Txt::trad("dates_mauvais_format") ?>");
-				validForm=false;
-			}
+		if(this.value.length>0){
+			var dateMatch=/^\d{2}\/\d{2}\/\d{4}$/.exec(this.value);
+			if(dateMatch==null)   {validForm=false;  notify("<?= Txt::trad("dateFormatError") ?>");}
 		}
 	});
-	////	Controle d'un invité
-	if($("[name='guest']").exist()){
-		if($("[name='guest']").isEmpty())	{displayNotif("<?= Txt::trad("EDIT_OBJET_alert_guest") ?>");	validForm=false;}
-		else if(captchaControl()==false)	{validForm=false;}
-	}
-	////	Controle les affectations
-	if($("[name='objectRight[]']").length>0)
+
+	////	Controle si besoin des affectations
+	if($("input[name='objectRight[]']").exist())
 	{
-		//Aucune affectation : false!
-		if($(":checked[name='objectRight[]']").length==0)	{displayNotif("<?= Txt::trad("EDIT_OBJET_alert_aucune_selection") ?>");  validForm=false;}
+		//Aucune affectation : false
+		if($(":checked[name='objectRight[]']").length==0)   {validForm=false;  notify("<?= Txt::trad("EDIT_notifNoSelection") ?>");}
 		//Sujet du forum et uniquement des accès en lecture : false!
-		if("<?= $curObj::objectType ?>"=="forumSubject" && $(":checked[name='objectRight[]'][value$='_1.5'], :checked[name='objectRight[]'][value$='_2']").length==0)
-			{displayNotif("<?= Txt::trad("EDIT_OBJET_alert_ecriture_obligatoire") ?>");  validForm=false;}
+		if("<?= $curObj::objectType ?>"=="forumSubject" && $(":checked[name='objectRight[]'][value$='_1.5'], :checked[name='objectRight[]'][value$='_2']").length==0)   {validForm=false;  notify("<?= Txt::trad("EDIT_notifWriteAccess") ?>");}
 		//Aucun accès pour l'user courant?
-		var nbCurUserAccess=$(":checked[name='objectRight[]'][value*='spaceGuests'], :checked[name='objectRight[]'][value*='spaceUsers'], :checked[name='objectRight[]'][value*='allSpaces'], :checked[name='objectRight[]'][value*='_U<?= Ctrl::$curUser->_id ?>_']").length;
-		if(nbCurUserAccess==0 && confirm("<?= Txt::trad("EDIT_OBJET_alert_pas_acces_perso") ?>")==false)
-			{validForm=false;}
+		var nbCurUserAccess=$(":checked[name='objectRight[]'][value*='spaceUsers'], :checked[name='objectRight[]'][value*='_U<?= Ctrl::$curUser->_id ?>_']").length;
+		if(nbCurUserAccess==0 && confirm("<?= Txt::trad("EDIT_notifNoPersoAccess") ?>")==false)  {validForm=false;}
 	}
-	////	Controle un mail (si besoin)
-	if($("input[name='mail']").isEmpty()==false && !isMail($("input[name='mail']").val()))   {displayNotif("<?= Txt::trad("mail_pas_valide"); ?>");  return false;}
+
+	////	Controle des GUEST
+	if($("input[name='guest']").exist()){
+		//Controle du champ "guest
+		if($("input[name='guest']").val().length<3)  {validForm=false;  notify("<?= Txt::trad("EDIT_guestNameNotif") ?>");}
+		//Controle du Captcha
+		var ajaxResult=$.ajax({url:"?ctrl=misc&action=CaptchaControl&captcha="+encodeURIComponent($("#captchaText").val()),async:false}).responseText;//Attend la réponse Ajax pour passer à la suite (async:false)
+		if(ajaxResult!="true")  {validForm=false;  notify("<?=Txt::trad("captchaError") ?>");}
+	}
+
 	////	Controle OK
-	if(validForm==true)	{$(".loadingImg").css("display","inline-block");}
+	if(validForm==true)  {$(".loadingImg").css("display","block");}
 	return validForm;
 }
 </script>
 
-
 <style>
-/***Divers*/
-[id^='blockMenuEdit']:not([id='blockMenuEditMain'])	{text-align:left; padding:5px;}
-/***Affectations aux espaces*/
-[id^='spaceBlock']						{margin:10px; max-height:350px; overflow-y:auto; -moz-user-select:none; -webkit-user-select:none; -ms-user-select:none;}
-.vSpaceTable							{display:inline-table; min-width:80%;}
-.vSpaceTitle, .vSpaceTarget				{display:table-row;}
-.vSpaceTitle label, .vSpaceTitle div	{cursor:help; padding-bottom:5px;}
-.vSpaceTargetRead, .vSpaceTargetWrite, .vSpaceTargetWriteLimit	{display:table-cell; min-width:80px; padding-left:7px;}
-.vSpaceTargetWriteLimit					{width:140px;}
-.vSpaceTitle label, .vSpaceTarget label	{display:table-cell; min-width:220px; text-align:left; vertical-align:middle;}
-.vSpaceTitle label						{cursor:auto;}
-.vSpaceTarget label						{height:22px;}
-.vSpaceTarget label img					{vertical-align:middle; max-height:15px;}
-.vSpaceTarget label img[src*='dot']		{max-height:12px;}
-.vSpaceTargetWriteLimit img[src*='edit']{opacity:0.6;}
-.vRightsOptions							{margin:10px;}
-#showAllSpaces							{display:none; cursor:pointer; text-align:center;}
-/***Fichiers joints*/
-[id^='newAttachedFile']							{display:none; text-align:left; margin-left:15px;}
-[id='newAttachedFile1']							{display:block;}
-[id^='newAttachedFileOptions']					{display:none;}
-.attachedFiles									{display:table; text-align:left; margin-left:30px; margin-top:10px;}
-.attachedFiles:empty							{display:none;}
-[id^='menuAttachedFile']						{display:table-row;}
-[id^='menuAttachedFile'] div:nth-child(1)		{display:table-cell; padding-top:5px;}
-[id^='menuAttachedFile'] div:nth-child(2)		{display:table-cell; padding-top:5px; padding-left:10px;}
-[id^='menuAttachedFile'] div:nth-child(2) img	{max-height:20px; margin-right:5px;}
-/***Notification par mail*/
-#notifMailUsersPlus, #notifMailUsersPlusList, .notifMailUserPlusHidden, .notifMailOptions	{display:none;}
-.notifMailOptions	{float:right; text-align:right;}
+/*OPTIONS D'EDITION (ex 'fieldset')*/
+#objMenuBlocks							{text-align:left; margin-top:33px;}
+#objMenuLabels							{display:table; width:100%; margin:33px 0px -33px 0px;}
+.objMenuLabel							{display:table-cell; padding:10px 5px 5px 5px; text-align:center; cursor:pointer; border-radius:3px 3px 0px 0px;}
+.objMenuLabel[for='objMenuMain']		{min-width:150px!important;}/*droits d'accès*/
+.objMenuLabel>span						{display:inline-block; margin-left:15px;}
+.objMenuLabel:not(.objMenuLabelUnselect){border-bottom:none!important;}
+.objMenuLabelUnselect					{opacity:0.8;}
+
+/*DROITS D'ACCÈS*/
+#objMenuMain							{text-align:center;}
+[id^=spaceTable]						{text-align:center; margin-top:20px; margin-bottom:40px;}
+.vSpaceTable							{display:inline-table; min-width:450px; max-width:100%; background-color:<?= Ctrl::$agora->skin=="black"?"#333":"#f8f8f8;"?>}/*idem responsive!*/
+.vSpaceTable>div						{display:table-row;}
+.vSpaceTable>div>div					{display:table-cell; padding:5px 3px 5px 3px;}
+.vSpaceTable img						{max-height:15px;}
+.vSpaceLabel							{cursor:pointer; text-align:left;}
+.vSpaceTitle>div						{vertical-align:middle;}
+.vSpaceTitle .vSpaceLabelHide			{visibility:hidden;}/*masque le nom de l'espace courant*/
+.vSpaceTitle>div:first-child			{font-style:italic;}/*nom de l'espace*/
+.vSpaceTitle>div:not(:first-child)		{width:65px; text-align:center;}/*colonne des checkboxes*/
+.vSpaceTargetIcon						{margin-right:10px;}/*icone de target/de user*/
+.vSpaceTargetIconAdmin					{filter:brightness(0.9);}/*icone d'admin : plus foncé*/
+.vShowAllUsers .vSpaceLabel				{padding-top:10px;}/*"Voir tous les users"*/
+.vSpaceHideTarget						{display:none!important;}/*Users de l'espace courant non sélectionnés: masqués par défaut*/
+#ShowAllSpaces, #ExtendToSubfolders		{text-align:center; cursor:pointer; margin-top:10px; margin-bottom:5px;}
+
+/*FICHIERS JOINTS*/
+#addAttachedFileLabel					{margin-top:10px; margin-bottom:20px;}
+[id^='addAttachedFileDiv'], [id^='menuAttachedFile']	{margin:15px;}
+[id^='addAttachedFileDiv']:not(#addAttachedFileDiv1)	{display:none;}/*Affiche par défaut le premier Input*/
+.addAttachedFileInsertOpt				{display:none;}
+
+/*NOTIFICATION PAR MAIL AND CO*/
+#notifMailUsersPlus, #notifMailSelectList, #notifMailOptions	{display:none;}
+#notifMailSelectList					{padding-left:25px; border-radius:3px;}
+#notifMailSelectList>div				{display:inline-block; width:190px; padding:3px;}
+#notifMailSelectList>hr					{margin:3px;}
+#notifMailOptions>div					{margin-left:10px; margin-top:8px;}
+
+/*MENU GUEST*/
+#guestMenu								{border:1px solid #ccc!important; text-align:center;}
+
+/*RESPONSIVE FANCYBOX (440px)*/
+@media screen and (max-width:440px){
+	.objMenuLabel[for='objMenuMain']	{min-width:80px!important;}
+	.objMenuLabel img					{display:none; }
+	.vSpaceTable						{min-width:100%;}
+	.vSpaceTitle, .vSpaceLabel			{font-size:0.9em;}/*Entête du tableau et label des "targets"*/
+	.vSpaceTitle>div:not(:first-child)	{width:50px;}/*colonne des checkboxes*/
+	.vSpaceTargetIcon					{display:none;}
+}
 </style>
 
 
-<!--INITIALISE L'EDITEUR HTML POUR UN CHAMP?-->
-<?php if($curObj::htmlEditorField!==null)	{echo CtrlMisc::initHtmlEditor($curObj::htmlEditorField);} ?>
+<?php
+////	INITIALISE L'EDITEUR HTML D'UN CHAMP (description ou autre) ?
+if($curObj::htmlEditorField!==null)  {echo CtrlMisc::initHtmlEditor($curObj::htmlEditorField);}
 
+////	MENU D'IDENTIFICATION : GUESTS
+if(Ctrl::$curUser->isUser()==false){
+	echo "<div class='lightboxBlock' id='guestMenu'><input type='text' name='guest' onkeyup=\"this.value=this.value.slice(0,150)\" placeholder=\"".Txt::trad("EDIT_guestName")."\"><hr>".CtrlMisc::menuCaptcha()."</div>";
+}
+////	MENU PRINCIPAL
+elseif(!empty($accessRightMenu) || !empty($attachedFiles) || !empty($moreOptions))
+{
+	////	ONGLETS DES MENUS
+	echo "<div id='objMenuLabels' class='noSelect'>";
+		if(!empty($accessRightMenu))	{echo "<div class='objMenuLabel' for='objMenuMain'><img src='app/img/accessRight.png'> ".$accessRightMenuLabel."</div>";}
+		if(!empty($attachedFiles))		{echo "<div class='objMenuLabel ".(!empty($attachedFilesList)?"sLinkSelect":null)."' for='objMenuAttachedFiles'><img src='app/img/editAttachment.png'> ".Txt::trad("EDIT_attachedFile")."</div>";}
+		if(!empty($moreOptions)){
+			echo "<div class='objMenuLabel' for='objMenuMoreOptions'>";
+				if(!empty($notifMail))	{echo "<span><img src='app/img/editNotif.png'> ".Txt::trad("EDIT_notifMail")." &nbsp;</span>";}
+				if(!empty($shortcut))	{echo "<span title=\"".Txt::trad("EDIT_shortcutInfo")."\" ".(!empty($shortcutChecked)?"class='sLinkSelect'":null)."><img src='app/img/shortcut.png'> ".Txt::trad("EDIT_shortcut")."</span>";}
+			echo "</div>";
+		}
+	echo "</div>";
 
-<!--ONGLETS DES MENUS-->
-<div class="fieldsetOptions">
-	<?php
-	if($mainMenu!=false)		{echo "<div class='fieldsetOption noSelect' for='blockMenuEditMain'><img src='app/img/edit.png'> ".$mainMenuLabel." ".($curObj::isContainer()?"<img src='app/img/info.png' title=\"".$curObj->tradObject("ecriture_auteur_admin")."\">":null)."</div>";}
-	if(!empty($notifMail))		{echo "<div class='fieldsetOption noSelect' for='blockMenuEditNotifMail' title=\"".Txt::trad("EDIT_OBJET_notif_mail_info")."\"><img src='app/img/mail.png'> ".Txt::trad("EDIT_OBJET_notif_mail")."</div>";}
-	if(!empty($attachedFiles))	{echo "<div class='fieldsetOption noSelect' for='blockMenuEditAttachedFiles' title=\"".Txt::trad("EDIT_OBJET_fichier_joint_info")."\"><img src='app/img/attachment.png'> ".Txt::trad("EDIT_OBJET_fichier_joint").(!empty($attachedFilesList)?"&nbsp;<img src='app/img/dotG.png'>":null)."</div>";}
-	if(!empty($shortcut))		{echo "<div class='fieldsetOption noSelect' for='blockMenuEditShortcut' title=\"".Txt::trad("EDIT_OBJET_shortcut_info")."\"><img src='app/img/shortcut.png'> ".Txt::trad("EDIT_OBJET_shortcut").(!empty($shortcutChecked)?"&nbsp;<img src='app/img/dotG.png'>":null)."</div>";}
-	?>
-</div>
+	////	OPTIONS D'EDITION
+	echo "<div id='objMenuBlocks' class='lightboxBlock'>";
 
-<!--CONTENU DES MENUS-->
-<?php if(!empty($mainMenu) || !empty($attachedFiles) || !empty($notifMail) || !empty($shortcut)){ ?>
-<fieldset class="fieldsetCenter fieldsetMarginTop sBlock">
+		////	MENU PRINCIPAL : DROITS D'ACCES (OBJETS INDEPENDANTS)
+		if(!empty($accessRightMenu))
+		{
+			echo "<div id='objMenuMain'>";
+				//DROIT D'ACCES DES BLOCK D'ESPACES
+				foreach($spacesAccessRight as $spaceCpt=>$tmpSpace)
+				{
+					//BLOCK DE L'ESPACE
+					echo "<div id=\"spaceTable".$tmpSpace->_id."\">";
+						//TABLEAU D'UN ESPACE
+						echo "<div class='vSpaceTable noSelect'>";
+							//ENTETE DE L'ESPACE (nom de l'espace et droits d'acces)
+							echo "<div class='vSpaceTitle'>
+									<div class='vSpaceLabel ".($tmpSpace->isCurSpace()?'vSpaceLabelHide':null)."' title=\"".$tmpSpace->name."<br>".$tmpSpace->description."\">".Txt::reduce($tmpSpace->name,35)."</div>
+									<div class='vSpaceRead noTooltip' title=\"".Txt::trad("readInfos")."\">".Txt::trad("accessRead")."</div>
+									<div class='vSpaceWriteLimit noTooltip' title=\"".$writeReadLimitInfos."\">".Txt::trad("accessWriteLimit")."</div>
+									<div class='vSpaceWrite noTooltip' title=\"".Txt::trad("writeInfos")."\">".Txt::trad("accessWrite")."</div>
+								  </div>";
+							//TARGETS DE L'ESPACE (id des checkboxes deja dans "boxProp"!)
+							$tmpSpace->hiddenSelection=false;
+							foreach($tmpSpace->targetLines as $targetLine)
+							{
+								$targetLine["classHideUser"]=(empty($targetLine["isChecked"]) && $tmpSpace->isCurSpace())  ?  "vSpaceHideTarget"  :  null;
+								if(!empty($targetLine["classHideUser"]))  {$tmpSpace->hiddenSelection=true;}
+								$targetLine["tooltip"]=(!empty($targetLine["tooltip"]))  ?  "title=\"".$targetLine["tooltip"]."\""  :  null;
+								$userIconClass=(!empty($targetLine["onlyFullAccess"]))  ?  "vSpaceTargetIcon vSpaceTargetIconAdmin"  :  "vSpaceTargetIcon";
+								$targetLine["icon"]=(!empty($targetLine["icon"]))  ?  "<img src='app/img/".$targetLine["icon"]."' class='".$userIconClass."'>"  :  null;
+								echo "<div class='vSpaceTarget sTableRow ".$targetLine["classHideUser"]."' id=\"targetLine".$targetLine["targetId"]."\">
+										<div class='vSpaceLabel' id=\"".$targetLine["targetId"]."\" ".$targetLine["tooltip"].">".$targetLine["icon"]."".$targetLine["label"]."</div>
+										<div class='vSpaceRead noTooltip' title=\"".Txt::trad("readInfos")."\"><input type='checkbox' name='objectRight[]' ".$targetLine["boxProp"]["1"]."></div>
+										<div class='vSpaceWriteLimit noTooltip' title=\"".$writeReadLimitInfos."\"><input type='checkbox' name='objectRight[]' ".$targetLine["boxProp"]["1.5"]."></div>
+										<div class='vSpaceWrite noTooltip' title=\"".Txt::trad("writeInfos")."\"><input type='checkbox' name='objectRight[]' ".$targetLine["boxProp"]["2"]."></div>
+									  </div>";
+							}
+							//"AFFICHER TOUS LES UTILISATEURS"
+							if($tmpSpace->hiddenSelection==true){
+								echo "<div class='vShowAllUsers' for='#spaceTable".$tmpSpace->_id."'>
+										<div class='vSpaceLabel'>".Txt::trad("EDIT_showAllSpaceUsers")." <img src='app/img/arrowBottom.png'></div>
+									  </div>";
+							}
+						echo "</div>";
+					//BLOCK DE L'ESPACE
+					echo "</div>";
+				}
+				//ETENDRE LES DROITS AUX SOUS-DOSSIERS  &&  "AFFICHER TOUS LES ESPACES"
+				if(!empty($extendToSubfolders))  {echo "<div id='ExtendToSubfolders'><hr><input type='checkbox' name='extendToSubfolders' id='extendToSubfolders' value='1' checked='checked'><label for='extendToSubfolders' title=\"".Txt::trad("EDIT_accessRightSubFolders_info")."\">".Txt::trad("EDIT_accessRightSubFolders")."</label></div><script>$('#ExtendToSubfolders').effect('pulsate',{times:4},4000);</script>";}
+				if(count($spacesAccessRight)>1)  {echo "<div id='ShowAllSpaces'><hr>".Txt::trad("EDIT_mySpaces")." <img src='app/img/arrowBottom.png'></div>";}
+			echo "</div>";
+		}
 
-	<!--MENU PRINCIPAL-->
-	<?php if(!empty($mainMenu)){ ?>
-	<div id="blockMenuEditMain">
-		<!--MENU GUEST : IDENTIFICATION-->
-		<?php if($mainMenu=="identification"){ ?>
-			<?= Txt::trad("EDIT_OBJET_guest") ?> <input type="text" name="guest" onkeyup="this.value=this.value.slice(0,150)"><hr>
-			<?= CtrlMisc::menuCaptcha() ?>
-		<?php } ?>
-		<!--MENU USER : (OBJETS INDEPENDANTS)-->
-		<?php if($mainMenu=="accessRights"){ ?>
-			<!--DROIT D'ACCES DES BLOCK D'ESPACES-->
-			<?php foreach($blocksAccessRight as $spaceCpt=>$tmpSpace){ ?>
-			<div id="spaceBlock<?= $tmpSpace->_id ?>">
-				<?= $spaceCpt>0?"<hr>":null ?>
-				<div class="vSpaceTable">
-					<!--ENTETE DE L'ESPACE-->
-					<div class="vSpaceTitle">
-						<label title="<?= $tmpSpace->description ?>">
-							<?= $tmpSpace->name ?>
-							<?php if($tmpSpace->curModuleEnabled==false){ ?><img src="app/img/important.png" title="<?= Txt::trad("EDIT_OBJET_espace_pas_module") ?>"><?php } ?>
-						</label>
-						<div class="vSpaceTargetRead" title="<?= Txt::trad("lecture_infos") ?>"><?= Txt::trad("lecture") ?> <img src="app/img/eye.png"></div>
-						<div class="vSpaceTargetWriteLimit" title="<?= $WriteLimitInfos ?>"><?= Txt::trad("ecriture_limit") ?> <img src="app/img/edit.png"></div>
-						<div class="vSpaceTargetWrite" title="<?= Txt::trad("ecriture_infos") ?>"><?= Txt::trad("ecriture") ?> <img src="app/img/edit.png"></div>
-					</div>
-					<!--TARGETS DE L'ESPACE (NE PAS AJOUTER D'ID AU CHECKBOXES. CF. "boxProp")-->
-					<?php foreach($tmpSpace->targetsLines as $tmpTarget){ ?>
-					<div class="vSpaceTarget sTableRow sAccessDefault" id="targetLine<?= $tmpTarget["targetId"] ?>">
-						<label id="<?= $tmpTarget["targetId"] ?>" <?= !empty($tmpTarget["tooltip"]) ? 'title="'.Txt::reduce($tmpTarget["tooltip"],400).'"' : null ?>>
-							<?= !empty($tmpTarget["labelIcon"]) ? "<img src='app/img/".$tmpTarget["labelIcon"]."'>" : null ?>
-							<?= $tmpTarget["labelText"] ?>
-							<?= !empty($tmpTarget["labelIconBis"]) ? "<img src='app/img/".$tmpTarget["labelIconBis"]."'>" : null ?>
-						</label>
-						<div class="vSpaceTargetRead" title="<?= Txt::trad("lecture_infos") ?>"><input type="checkbox" name="objectRight[]" <?= $tmpTarget["boxProp"]["1"] ?>></div>
-						<div class="vSpaceTargetWriteLimit" title="<?= $WriteLimitInfos ?>"><input type="checkbox" name="objectRight[]" <?= $tmpTarget["boxProp"]["1.5"] ?>></div>
-						<div class="vSpaceTargetWrite" title="<?= Txt::trad("ecriture_infos") ?>"><input type="checkbox" name="objectRight[]" <?= $tmpTarget["boxProp"]["2"] ?>></div>
-					</div>
-					<?php } ?>
-				</div>
-			</div>
-			<?php } ?>
-			<!--OPTION "AFFICHER TOUS LES ESPACES"-->
-			<?php if(count($blocksAccessRight)>1){ ?><div id="showAllSpaces"><?= Txt::trad("EDIT_OBJET_tous_espaces") ?> <img src="app/img/developp.png"></div><?php } ?>
-			<!-- OPTIONS : ETENDRE LES DROITS AUX SOUS-DOSSIERS / INFOS SUR LES DROITS D'ACCES DES SUJETS / INFOS SUR LES DROITS D'ACCES DES DOSSIERS RACINE-->
-			<?php if(!empty($extendToSubfolders)){ ?><hr><div class="vRightsOptions"><label for="extendToSubfolders" title="<?= Txt::trad("EDIT_OBJET_accessRightSubFolders_info") ?>"><?= Txt::trad("EDIT_OBJET_accessRightSubFolders") ?></label><input type="checkbox" name="extendToSubfolders" id="extendToSubfolders" value="1"></div><?php } ?>
-			<?php if($curObj::objectType=="forumSubject"){ ?><hr><div class="vRightsOptions"><img src="app/img/important.png"> <?= Txt::trad("FORUM_accessRightInfos") ?></div><?php } ?>
-		<?php } ?>
-	</div>
-	<?php } ?>
+		////	MENU "ATTACHED FILES" (FICHIERS JOINTS)
+		if(!empty($attachedFiles))
+		{
+			echo "<div id='objMenuAttachedFiles'>";
+					//Infos
+					echo "<div id='addAttachedFileLabel'><img src='app/img/attachment.png'> ".Txt::trad("EDIT_attachedFileInfo")." :</div>";
+					//Fichiers à ajouter (10 maxi)
+					for($cptFile=1; $cptFile<=10; $cptFile++)
+					{
+						$attachedFileOptions=null;
+						if($curObj::htmlEditorField!==null){
+							$attachedFileOptions="<span class='addAttachedFileInsertOpt'>
+													<input type='checkbox' name=\"addAttachedFileInsert".$cptFile."\" id=\"addAttachedFileInsert".$cptFile."\" value='1'>
+													<label for=\"addAttachedFileInsert".$cptFile."\" title=\"".Txt::trad("EDIT_attachedFileInsertInfo")."\" class='abbr'>".Txt::trad("EDIT_attachedFileInsert")."</label>
+												  </span>";
+						}
+						echo "<div id=\"addAttachedFileDiv".$cptFile."\"><input type='file' name=\"addAttachedFile".$cptFile."\">".$attachedFileOptions."</div>";
+					}
+					//Fichiers déjà enregistrés
+					if(!empty($attachedFilesList))
+					{
+						echo "<hr>";
+						foreach($attachedFilesList as $tmpFile){
+							$fileOptions=" &nbsp;<img src='app/img/delete.png' class='sLink' title=\"".Txt::trad("delete")."\" onclick=\"deleteAttachedFile(".$tmpFile["_id"].");\">";
+							if($curObj::htmlEditorField!==null && File::isType("attachedFileInsert",$tmpFile["name"]))  {$fileOptions.=" &nbsp;<img src='app/img/editAttachmentInsertText.png' title=\"".Txt::trad("EDIT_attachedFileInsertInfo")."\" ".MdlObject::attachedFileInsert($tmpFile["_id"],true)." class='sLink'>";}
+							echo "<div id=\"menuAttachedFile".$tmpFile["_id"]."\"><img src='app/img/dot.png'> ".$tmpFile["name"]." ".$fileOptions."</div>";
+						}
+					}
+			echo "</div>";
+		}
+		
+		////	MENU "MORE OPTIONS" (NOTIF / SHORTCUT)
+		if(!empty($moreOptions))
+		{
+			echo "<div id='objMenuMoreOptions'>";
+			////	MENU "NOTIF MAIL" (notifications par mail)
+			if(!empty($notifMail))
+			{
+				//CHECKBOX PRINCIPAL & OPTIONS
+				echo "<br><img src='app/img/editNotif.png'>&nbsp;<input type='checkbox' name='notifMail' id='boxNotifMail' value='1' onChange=\"$('#notifMailOptions').slideToggle();\">&nbsp;<label for='boxNotifMail' title=\"".Txt::trad("EDIT_notifMailInfo")."\">".Txt::trad("EDIT_notifMail2")."</label>";
+				echo "<div id='notifMailOptions'>";
+					//JOINDRE L'OBJET FICHIER A LA NOTIFICATION ?
+					if($curObj::objectType=="file" && $curObj->_id==0)  {echo "<div><img src='app/img/dependency.png'><input type='checkbox' name='notifMailAddFiles' id='boxNotifMailAddFiles' value='1'><label for='boxNotifMailAddFiles' title=\"".Txt::trad("FILE_fileSizeLimit")." ".File::displaySize(File::mailMaxFilesSize)."\">".Txt::trad("EDIT_notifMailAddFiles")."</label></div>";}
+					//MONTRER LES DESTINATAIRES DANS LE MESSAGE  /  ACCUSE DE RECEPTION  /  SPECIFIER LES DESTINATAIRES
+					echo "<div><img src='app/img/dependency.png'><input type='checkbox' name='hideRecipients' id='boxhideRecipients' value='1'><label for='boxhideRecipients' title=\"".Txt::trad("MAIL_hideRecipientsInfo")."\">".Txt::trad("MAIL_hideRecipients")."</label></div>
+						  <div><img src='app/img/dependency.png'><input type='checkbox' name='receptionNotif' id='boxReceptionNotif' value='1'><label for='boxReceptionNotif' title=\"".Txt::trad("MAIL_receptionNotifInfo")."\">".Txt::trad("MAIL_receptionNotif")."</label></div>
+						  <div><img src='app/img/dependency.png'><input type='checkbox' name='notifMailSelect' id='boxNotifMailSelect' value='1' onclick=\"$('#notifMailSelectList').slideToggle();\"><label for='boxNotifMailSelect'>".Txt::trad("EDIT_notifMailSelect")."</label></div>";
+					//LISTE DETAILLE DES UTILISATEURS
+					echo "<div id='notifMailSelectList'>";
+						//Affiche les users de tous mes espaces
+						foreach($notifMailUsers as $tmpUser){
+							echo "<div id=\"divNotifMailUser".$tmpUser->_id."\" ".(!in_array($tmpUser->_id,$curSpaceUsersIds)?"style='display:none'":null).">
+									<input type='checkbox' name='notifMailUsers[]' value=\"".$tmpUser->_id."\" id=\"boxNotif".$tmpUser->_targetObjId."\" data-idUser=\"".$tmpUser->_id."\">
+									<label for=\"boxNotif".$tmpUser->_targetObjId."\" title=\"".$tmpUser->mail."\">".$tmpUser->getLabel()."</label>
+								  </div>";
+						}
+						//Selection d'un groupe d'utilisateurs
+						if(!empty($curSpaceUserGroups))  {echo "<hr>";}
+						foreach($curSpaceUserGroups as $tmpGroup){
+							echo "<div title=\"".Txt::trad("selectUnselect")." :<br>".$tmpGroup->usersLabel."\">
+									<input type='checkbox' name=\"notifUsersGroup[]\" value=\"".implode(",",$tmpGroup->userIds)."\" id='notifUsersGroup".$tmpGroup->_targetObjId."' onchange=\"userGroupSelect(this,'#notifMailSelectList');\">
+									<label for='notifUsersGroup".$tmpGroup->_targetObjId."'><img src='app/img/user/userGroup.png'> ".$tmpGroup->title."</label>
+								  </div>";
+						}
+					echo "</div>";
+					//Masque par défaut les users absent de l'espace courant
+					if(count($notifMailUsers)>count($curSpaceUsersIds))  {echo "<br><div onclick=\"$('[id^=divNotifMailUser]').fadeIn();$(this).fadeOut();\" class='sLink'>".Txt::trad("EDIT_notifMailMoreUsers")."</div>";}
+				echo "</div>";
+			}
+			////	MENU "SHORTCUT" (raccourci)
+			if(!empty($shortcut))  {echo "<br><br><img src='app/img/shortcut.png'>&nbsp;<input type='checkbox' name='shortcut' id='boxShortcut' value='1' ".$shortcutChecked.">&nbsp;<label for='boxShortcut'>".Txt::trad("EDIT_shortcutInfo")."</label>";}
+			////	Fin de "objMenuMoreOptions"
+			echo "</div>";
+		}
+	//OPTIONS D'EDITION: FIN
+	echo "</div>";
+}
 
-	<!--MENU FICHIER JOINTS-->
-	<?php if(!empty($attachedFiles)){ ?>
-	<div id="blockMenuEditAttachedFiles">
-		<!--Fichiers à ajouter (10 maxi)-->
-		<?php for($cptFile=1; $cptFile<=10; $cptFile++){ ?>
-		<div id="newAttachedFile<?= $cptFile ?>">
-			<input type="file" name="newAttachedFile<?= $cptFile ?>">
-			<?php if($curObj::htmlEditorField!==null){ ?>
-			<div id="newAttachedFileOptions<?= $cptFile ?>" title="<?= Txt::trad("EDIT_OBJET_inserer_fichier_info") ?>">
-				<img src="app/img/arrowRight.png"> <label for="newAttachedFileInsert<?= $cptFile ?>"><?= Txt::trad("EDIT_OBJET_inserer_fichier") ?></label>
-				<input type="checkbox" name="newAttachedFileInsert<?= $cptFile ?>" id="newAttachedFileInsert<?= $cptFile ?>" value="1">
-				<img src="app/img/attachmentInsertText.png">	
-			</div>
-			<?php } ?>
-		</div>
-		<?php } ?>
-		<!--Fichiers déjà enregistrés-->
-		<div class="attachedFiles">
-			<?php foreach($attachedFilesList as $tmpFile){ ?>
-			<div id="menuAttachedFile<?= $tmpFile["_id"] ?>">
-				<div><img src="app/img/dotW.png"> <?= $tmpFile["name"] ?></div>
-				<div>
-					<img src="app/img/delete.png" class="sLink" title="<?= Txt::trad("supprimer") ?>" onclick="deleteAttachedFile(<?= $tmpFile["_id"] ?>);">
-					<?php if($curObj::htmlEditorField!==null && File::controlType("attachedFile",$tmpFile["name"])){ ?>
-					<img src="app/img/attachmentInsertText.png" class="sLink" title="<?= Txt::trad("EDIT_OBJET_inserer_fichier_info") ?>" <?= MdlObject::attachedFileInsert($tmpFile["_id"],true) ?>>
-					<?php } ?>
-				</div>
-			</div>
-			<?php } ?>
-		</div>
-	</div>
-	<?php } ?>
-
-	<!--MENU NOTIFICATIONS PAR MAIL-->
-	<?php if(!empty($notifMail)){ ?>
-	<div id="blockMenuEditNotifMail">
-		<label for="boxNotifMail" title="<?= Txt::trad("EDIT_OBJET_notif_mail_info") ?>"> <?= Txt::trad("EDIT_OBJET_notif_mail_label") ?></label>
-		<input type="checkbox" name="notifMail" id="boxNotifMail" value="1" onChange="$('#notifMailUsersPlus,.notifMailOptions').slideToggle(200);">
-		<img src="app/img/plus.png" id="notifMailUsersPlus" class="sLink" title="<?= Txt::trad("EDIT_OBJET_notif_mail_selection") ?>" onclick="$('#notifMailUsersPlusList').slideToggle(200);toScroll();">
-		<!--OPTIONS DU MAIL-->
-		<div class="notifMailOptions">
-			<!--MONTRER LES DESTINATAIRES DANS LE MESSAGE-->
-			<div>
-				<label for="boxhideRecipients" title="<?= Txt::trad("MAIL_hideRecipients_info") ?>"><?= Txt::trad("MAIL_hideRecipients") ?></label>
-				<input type="checkbox" name="hideRecipients" id="boxhideRecipients" value="1">
-			</div>
-			<!--ACCUSE DE RECEPTION-->
-			<div>
-				<label for="boxReceptionNotif" title="<?= Txt::trad("MAIL_receptionNotif_info") ?>"><?= Txt::trad("MAIL_receptionNotif") ?></label>
-				<input type="checkbox" name="receptionNotif" id="boxReceptionNotif" value="1">
-			</div>
-			<!--JOINDRE L'OBJET FICHIER A LA NOTIFICATION ?-->
-			<?php if($curObj::objectType=="file" && $curObj->_id==0){ ?>
-			<div>
-				<label for="boxNotifMailAddFiles" title="<?= Txt::trad("FILE_limite_chaque_fichier")." ".File::displaySize(File::mailMaxFilesSize) ?>"><?= Txt::trad("EDIT_OBJET_notif_mail_joindre_fichiers") ?></label>
-				<input type="checkbox" name="notifMailAddFiles" id="boxNotifMailAddFiles" value="1">
-			</div>
-			<?php } ?>
-		</div>
-		<!--LISTE DETAILLE DES UTILISATEURS (masque d'abord les users absent de l'espace courant)-->
-		<div id="notifMailUsersPlusList">
-			<?php foreach($notifMailUsers as $tmpUser){ ?>
-			<div id="divNotifMailUser<?= $tmpUser->_id ?>" <?= (!in_array($tmpUser->_id,$notifMailCurSpaceUsersIds)?"class='notifMailUserPlusHidden'":"") ?>>
-				<input type="checkbox" name="notifMailUsers[]" value="<?= $tmpUser->_id ?>" id="boxNotifMailUsers<?= $tmpUser->_id ?>">
-				<label for="boxNotifMailUsers<?= $tmpUser->_id ?>" title="<?= $tmpUser->mail ?>"><?= $tmpUser->display() ?></label>
-			</div>
-			<?php } ?>
-			<?php if(count($notifMailUsers)>count($notifMailCurSpaceUsersIds)){ ?>
-				<p onclick="$('[id^=divNotifMailUser]').fadeIn(200);$(this).fadeOut(200);" class="sLink"><?= Txt::trad("EDIT_OBJET_notif_tous_users") ?></p>
-			<?php } ?>
-		</div>
-	</div>
-	<?php } ?>
-
-	<!--MENU RACCOURCIS-->
-	<?php if(!empty($shortcut)){ ?>
-	<div id="blockMenuEditShortcut">
-		<label for="boxShortcut"><img src="app/img/shortcut.png"> <?= Txt::trad("EDIT_OBJET_shortcut_info") ?></label>
-		<input type="checkbox" name="shortcut" id="boxShortcut" value="1" <?= $shortcutChecked ?>>
-	</div>
-	<?php } ?>
-
-</fieldset>
-<?php } ?>
-
-
-<!--VALIDATION & INPUTS HIDDEN DU FORMULAIRE & ICONE "LOADING"-->
-<?= Txt::formValidate() ?>
-<?php if(!empty($curObj->_idContainer)){ ?><input type="hidden" name="_idContainer" value="<?= $curObj->_idContainer ?>"><?php } ?>
-<div class="loadingImg">&nbsp;</div>
+////	BOUTON DE VALIDATION ET INPUTS HIDDEN ("ctrl"/"action"/etc)  &&  "_idContainer"  &&  ICONE "LOADING"
+echo Txt::submitButton();
+if(!empty($curObj->_idContainer))  {echo "<input type='hidden' name='_idContainer' value=\"".$curObj->_idContainer ."\">";}
+echo "<div class='loadingImg'><img src='app/img/loading.gif'></div>";

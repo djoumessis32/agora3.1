@@ -1,4 +1,12 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Modele des categories d'evenements
  */
@@ -7,11 +15,6 @@ class MdlCalendarEventCategory extends MdlObject
 	const moduleName="calendar";
 	const objectType="calendarEventCategory";
 	const dbTable="ap_calendarEventCategory";
-	const hasAccessRight=false;
-	const hasShortcut=false;
-	const hasAttachedFiles=false;
-	const hasNotifMail=false;
-	//Champs obligatoires et de tri des résultats
 	public static $requiredFields=array("title");
 	public static $sortFields=array("title@asc","title@desc");
 
@@ -36,7 +39,7 @@ class MdlCalendarEventCategory extends MdlObject
 	}
 
 	/*
-	 * Categories d'evenements (Filtre par espace?)			(ex "categories_evt()")
+	 * Categories d'evenements (Filtre par espace?)
 	 */
 	public static function getCategories($editMode=false)
 	{
@@ -45,11 +48,11 @@ class MdlCalendarEventCategory extends MdlObject
 	}
 
 	/*
-	 * SURCHARGE : Droit d'ajouter une nouvelle categorie
+	 * Droit d'ajouter une nouvelle categorie
 	 */
 	public static function addRight()
 	{
-		return (Ctrl::$curUser->isAdminCurSpace() || (Ctrl::$curUser->isUser() && Ctrl::$curSpace->moduleOptionEnabled("calendar","ajout_categorie_admin")==false));
+		return (Ctrl::$curUser->isAdminSpace() || (Ctrl::$curUser->isUser() && Ctrl::$curSpace->moduleOptionEnabled(self::moduleName,"adminAddCategory")==false));
 	}
 	
 	/*

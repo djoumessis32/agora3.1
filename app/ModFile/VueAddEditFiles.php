@@ -1,122 +1,139 @@
-<!--CHARGE PLUPLOAD -->
+<!--CHARGE PLUPLOAD (SI BESOIN) -->
+<?php if(Req::isParam("addVersion")==false){ ?>
 <script type="text/javascript" src="app/js/plupload/plupload.full.min.js"></script>
 <script type="text/javascript" src="app/js/plupload/i18n/<?= Txt::trad("UPLOADER") ?>.js"></script>
-<script type="text/javascript" src="app/js/plupload/jquery.ui.plupload/jquery.ui.plupload.js"></script>
+<script type="text/javascript" src="app/js/plupload/jquery.ui.plupload/jquery.ui.plupload.min.js"></script>
 <link rel="stylesheet" href="app/js/plupload/jquery.ui.plupload/css/jquery.ui.plupload.css" type="text/css" />
+<?php } ?>
 
-
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(550);
+lightboxSetWidth(550);
 
-////	Init
+////	INIT
 $(function(){
-	////	PLUPLOAD
-	$("#uploader").plupload({
-		url: "?ctrl=file&action=UploadTmpFile&tmpFolderName=<?= $tmpFolderName ?>",
-		runtimes: "html5,html4",
-		dragdrop: true,
-		max_file_size: "<?= (int)ini_get("upload_max_filesize") ?>mb",
-		max_file_count:<?= Ctrl::$curUser->isUser()?"200":"5" ?>,
-		unique_names : true,
-		views:{thumbs:true,list:true,active:"thumbs"},
+	////	NOUVELLE VERSION D'UN FICHIER  ||  AJOUT DE FICHIERS (UPLOAD MULTIPLE/SIMPLE)
+	<?php if(Req::isParam("addVersion")){ ?>
+		$("[name='addFileVersion']").on("change",function(){
+			if($("[name='curFileName']").val()!=$("[name='addFileVersion']").val().split('\\').pop())  {notify("<?= Txt::trad("FILE_updatedName") ?>");}
+		});
+	<?php }else{ ?>
+	////	Charge PlUpload
+	$("#uploadMultiple").plupload({
+		runtimes:"html5",
+		url:"?ctrl=file&action=UploadTmpFile&tmpFolderName=<?= $tmpFolderName ?>",
+		max_file_size:"<?= (int)ini_get("upload_max_filesize") ?>mb",//remplace 'mo' par 'mb'
+		max_file_count:200,//200 fichiers max
+		unique_names:true,//On n'envoie pas plusieurs fichiers avec le meme nom
+		dragdrop:true,//Fonction de Glisser/deposer de fichiers
 		init:{
-			//Fonction à l'ajout de fichiers
-			FilesAdded:function(up,files){
-				//Affiche l'option "redimension d'image" OU Affiche les fichiers au format "liste"
-				for(i=0; i<files.length; i++){
-					var fileExt=extension(files[i].name);
-					if(fileExt=="jpg" || fileExt=="jpeg" || fileExt=="png")	{$(".imageResize").fadeIn();}
-					else													{$("label[for$='_view_list']").trigger("click");}
+			//Fichier sélectionnés
+			FilesAdded:function(uploader,tmpFiles){
+				$(".plupload_droptext, select[name=uploadForm]").hide();	//Masque le "Déposer les fichiers ici" et le <select> d'envoi multiple/simple
+				$(".plupload_buttons").css("padding","0px");				//Descend le bouton "Choisir les fichiers" pour laisser la place à la liste de fichiers
+				for(var key=0; key<tmpFiles.length; key++){					//Ajoute si besoin l'option pour optimiser l'image
+					if(/(jpg|jpeg|png)$/i.test(tmpFiles[key].name))  {$("#imageResizeOption").show();}
 				}
-				//Masque le "drop text" & resize le fancybox
-				$(".plupload_droptext").css("display","none");
-				parent.$.fancybox.update();
 			}
 		}
 	});
-	//Bouton "selectionner les fichiers" de Plupload : Ajoute la taille Max des fichiers
-	$(".plupload_add").attr("title","<?= File::displaySize(File::uploadMaxFilesize()) ?> Max. <?= Txt::trad("FILE_ajout_multiple_info") ?>");
-	
-	////	Nouvelle version de fichier : affiche un message si le nom du fichier est différent
-	$("[name='addVersionFile']").on("change",function(){
-		var oldName=$("[name='curFileName']").val();
-		var newName=$("[name='addVersionFile']").val().split('\\').pop();
-		if(oldName!=newName)	{$("#notifDifferentName").fadeIn();}
-	});
+	////	PlUpload : Ajoute la taille Max des fichiers dans le "title" du bouton  "Ajouter les fichiers"
+	$(".plupload_add").attr("title","<?= $uploadMaxFilesize ?> Maximum par fichier. <?= Txt::trad("FILE_addMultipleFilesInfo") ?>");
+	<?php } ?>
 });
 
 ////	Contrôle du formulaire
 function formControl()
 {
-	//Nouvelle version de fichier
-	if($("[name='addVersion']").exist())
-	{
-		//Fichier sélectionné
-		if($("[name='addVersionFile']").isEmpty())	{displayNotif("<?= Txt::trad("FILE_selectionner_fichier"); ?>");  return false;}
-		//Controle final (champs obligatoires, etc)}
-		return finalFormControl();
-	}
-	//Ajout de fichier : controle Plupload
-	else if($("#uploader").exist())
-	{
-		//Selectionner au moins un fichier
-		if($("#uploader").plupload("getFiles").length==0)	{displayNotif("<?= Txt::trad("FILE_selectionner_fichier") ?>");  return false;}
-		//Si le controle global est OK : lance l'upload.. qui validera ensuite le formulaire
-		if(finalFormControl()){
-			$("#uploader").on("complete",function(){ $("#filesForm")[0].submit(); });
-			$("#uploader").plupload("start");
+	//Ajout de fichier via Plupload
+	if($("#uploadMultiple").is(":visible")){
+		//Aucun fichier sélectionné?
+		if($("#uploadMultiple").plupload("getFiles").length==0)  {notify("<?= Txt::trad("FILE_selectFile") ?>");  return false;}
+		//Controle global est OK : lance l'upload via Plupload (..qui valide ensuite le formulaire)
+		if(mainFormControl()){
+			$(".plupload_add,#uploadOptions>span").hide();//Masque le bouton d'ajout & les options d'upload (pas le block d'options)
+			$(".plupload_filelist_footer .plupload_file_status").show();//Affiche le % de progression
+			$("#uploadMultiple").plupload("start").on("complete",function(){  $("#filesForm")[0].submit();  });//Valide le formulaire à la fin des téléchargements
 		}
-		//C'est l'uploader qui valide le formulaire (mettre en dernier)
+		//Retourne "false" car c'est Plupload qui valide le formulaire
 		return false;
+	}
+	//Ajout de fichier via un input "file" (envoi simple ou  nouvelle version de fichier)
+	else{
+		if($("[name='addFileSimple'],[name='addFileVersion']").isEmpty())  {notify("<?= Txt::trad("FILE_selectFile") ?>"); return false;}//Aucun fichier sélectionné?
+		return mainFormControl();//Controle final (champs obligatoires, etc)
 	}
 }
 </script>
 
 
 <style>
-#notifDifferentName			{display:none;}
-.uploadOptions				{margin-top:8px; text-align:right;}
-textarea[name='description']{display:none;}
-.imageResize				{display:none;}
-/*Modifs de Plupload (masque les titres et le bouton de lancement de l'upload)*/
-.plupload_logo,.plupload_header_title,.plupload_header_text,.plupload_start	{display:none;}
-.plupload_header_content	{height:30px;}
-.plupload_view_list .plupload_content,.plupload_view_thumbs .plupload_content	{top:30px;}	/*cf. "plupload_header_content" à 30px, au lieu de 57px*/
-.plupload_view_switch		{position:absolute; top:2px; right:10px;}						/*IDEM*/
-.plupload_droptext 			{color:#aaa;}
-.plupload_add				{width:260px;}
+/*Surcharge de Plupload*/
+.plupload_container					{height:200px; min-height:200px; border-radius:3px 3px 0px 0px; border-bottom:0px;}	/*conteneur principal*/
+.plupload_wrapper					{min-width:100%!important; max-width:100%!important;}								/*Evite le scroll horizontal*/
+.plupload_header_content			{display:none;}																		/*Masque le header par défaut*/
+.plupload_content					{top:0px; height:135px}																/*Repositionne et redimentionne la liste des fichiers (cf. ".plupload_header_content" masqué)*/
+.plupload_droptext					{color:#aaa; font-size:1.1em;}														/*"Glisser les fichiers ici"*/
+.plupload_cell, .plupload_buttons	{width:100%; text-align:center;}													/*conteneur des boutons principaux*/
+.plupload_buttons					{padding-bottom:30px;}																/*idem*/
+.plupload_buttons .plupload_button	{text-transform:uppercase; padding:15px; font-weight:bold!important;}				/*Boutons principaux (Ajouter, Arreter, etc)*/
+.plupload_buttons .plupload_add 	{width:220px;}																		/*"Choisir les fichiers"*/
+.plupload_buttons .plupload_stop	{padding:5px; margin-bottom:5px;}													/*"Arrêter le téléchargement"*/
+
+/*Options d'upload*/
+#uploadSimple, #uploadAdd			{padding:10px; border:1px solid #aaa; border-bottom:0px;}/*input d'upload simple : au dessus des options*/
+#uploadOptions						{padding:8px; text-align:center; border:1px solid #aaa; border-top:0px; border-radius:0px 0px 3px 3px;}
+#uploadOptions>span					{margin-left:20px;}/*Options d'upload*/
+#inputDescription					{margin-top:15px;}
+#uploadSimple, #imageResizeOption, #inputDescription	{display:none;}
+
+/*Masque les elements inutiles de Plupload (header, progress, etc.)*/
+.plupload_filelist_header, .plupload_start, .plupload_progress_container, .plupload_filelist_footer .plupload_file_size, .plupload_filelist_footer .plupload_file_status  {display:none;}
+.plupload_filelist_footer .plupload_file_status  {position:absolute; bottom:13px; right:15px;}/*Repositionne le % de progression*/
+
+/*RESPONSIVE FANCYBOX (440px)*/
+@media screen and (max-width:440px){
+	.plupload_droptext 	{display:none!important;}
+	.plupload_container	{height:180px; min-height:180px;}
+}
 </style>
 
 
-<form action="index.php" method="post" onsubmit="return formControl()" id="filesForm" enctype="multipart/form-data">
+<form action="index.php" method="post" onsubmit="return formControl()" id="filesForm" enctype="multipart/form-data" class="lightboxContent">
+	<!--TITRE RESPONSIVE-->
+	<?php echo $curObj->editRespTitle("FILE_addFile"); ?>
 
+	<!--NOUVELLE VERSION D'UN FICHIER  ||  AJOUT DE FICHIERS (UPLOAD MULTIPLE/SIMPLE)-->
 	<?php if(Req::isParam("addVersion")){ ?>
-		<!--AJOUT DE VERSION DE FICHIER-->
-		<input type="hidden" name="addVersion" value="true">
-		<input type="hidden" name="curFileName" value="<?= $curObj->name ?>">
-		<div class="labelInfos" id="notifDifferentName"><?= Txt::trad("FILE_updatedName") ?></div>
-		<input type="file" name="addVersionFile" title="<?= File::displaySize(File::uploadMaxFilesize()) ?> Max">
+		<div id="uploadAdd">
+			<input type="file" name="addFileVersion" title="<?= $uploadMaxFilesize ?> Max">
+			<input type="hidden" name="curFileName" value="<?= $curObj->name ?>">
+			<input type="hidden" name="addVersion" value="true">
+		</div>
 	<?php }else{ ?>
-		<!--AJOUT DE FICHIERS VIA PLUPLOAD (input "file" remplacé par plupload)-->
-		<div id="uploader"><input type="file" name="newFile" title="<?= File::displaySize(File::uploadMaxFilesize()) ?> Max"></div>
+		<div id="uploadMultiple"><input type="file" name="addFileMultiple" title="<?= $uploadMaxFilesize ?> Max"></div>
+		<div id="uploadSimple"><input type="file" name="addFileSimple" title="<?= $uploadMaxFilesize ?> Max"></div>
 		<input type="hidden" name="tmpFolderName" value="<?= $tmpFolderName ?>">
 	<?php } ?>
-
-	<!--imageResize-->
-	<div class="uploadOptions imageResize">
-		<input type="checkbox" name="imageResize" id="imageResizeBox" value="1" checked> 
-		<label for="imageResizeBox"><?= Txt::trad("FILE_optimiser_images") ?></label>
-		<select name="resizeSize">
-			<?php foreach(array("1280","1600","2048") as $sizeMax)  {echo "<option value='".$sizeMax."'>".$sizeMax." ".Txt::trad("pixels")." Max</option>";} ?>
+		
+	<!--OPTIONS : UPLOAD MULTIPLE/SIMPLE && IMAGERESIZE && DESCRIPTION-->
+	<div id="uploadOptions">
+		<?php if(Req::isParam("addVersion")==false){ ?>
+		<select name="uploadForm" onchange="$('#uploadMultiple,#uploadSimple').hide();$('#'+this.value).show();">
+			<option value="uploadMultiple"><?= Txt::trad("FILE_uploadMultiple") ?></option>
+			<option value="uploadSimple"><?= Txt::trad("FILE_uploadSimple") ?></option>
 		</select>
-	</div>
-	<!--description-->
-	<div class="uploadOptions">
-		<div class="sLink" onclick="$('textarea[name=description]').slideToggle(200);"><?= Txt::trad("description") ?> <img src="app/img/description.png"></div>
-		<textarea name="description" placeholder="<?= Txt::trad("description") ?>"></textarea>
+		<?php } ?>
+		<span id="imageResizeOption">
+			<input type="checkbox" name="imageResize" id="imageResizeInput" value="1" checked> 
+			<label for="imageResizeInput"><?= Txt::trad("FILE_imgReduce") ?></label>
+		</span>
+		<span>
+			<span class="sLink" onclick="$('#inputDescription').slideToggle();"><?= Txt::trad("description") ?> <img src="app/img/description.png"></span>
+			<textarea name="description" placeholder="<?= Txt::trad("description") ?>" id="inputDescription"></textarea>
+		</span>
 	</div>
 
 	<!--MENU COMMUN-->
-	<?= $curObj->menuEditValidate() ?>
+	<?= $curObj->menuEdit() ?>
 </form>

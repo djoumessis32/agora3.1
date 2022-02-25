@@ -1,47 +1,47 @@
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(<?= (isset($fileContent)) ? 750 : 550 ?>);
+lightboxSetWidth(<?= (isset($fileContent)) ? 750 : 550 ?>);
 
-////	Contrôle du formulaire
-function formControl()
-{
-	//Controle si un autre fichier porte le même nom (dans le même dossier conteneur)
-	if($("[name='name']").isEmpty()==false){
-		var ajaxUrl="?ctrl=object&action=ControlDuplicateName&targetObjId=<?= $curObj->_targetObjId ?>&targetObjIdContainer=<?= $curObj->containerObj()->_targetObjId ?>&controledName="+encodeURIComponent($("[name='name']").val()+$("[name='dotExtension']").val());
-		var ajaxResult=$.ajax({url:ajaxUrl,async:false}).responseText;//Attend la réponse Ajax pour passer à la suite (async:false)
-		if(find("true",ajaxResult))  {displayNotif("<?= Txt::trad("MSG_NOTIF_duplicateName"); ?>");  return false;}//Doublon: retourne false
-	}
-	//Controle final (champs obligatoires, affectations/droits d'accès, etc)}
-	return finalFormControl();
-}
+////	INIT
+$(function(){
+	////	Validation du formulaire
+	$("#mainForm").submit(function(event){
+		//Pas de validation par défaut du formulaire
+		event.preventDefault();
+		//Controle si un autre fichier porte le même nom
+		$.ajax("?ctrl=object&action=ControlDuplicateName&targetObjId=<?= $curObj->_targetObjId ?>&targetObjIdContainer=<?= $curObj->containerObj()->_targetObjId ?>&controledName="+encodeURIComponent($("[name='name']").val()+$("[name='dotExtension']").val())).done(function(result){
+			//Retourne false si ya doublon. Mais si le controle principal est ok, on poste le formulaire et ferme la page
+			if(find("duplicate",result))	{notify("<?= Txt::trad("NOTIF_duplicateName"); ?>","warning");  return false;}
+			else if(mainFormControl())		{$.ajax({url:"index.php",data:$("#mainForm").serialize()}).done(function(){ lightboxClose(); });}
+		});
+	});
+});
 </script>
 
-
 <style>
-[name='dotExtension']	{width:30px; margin-right:10px;}
-[name='description']	{width:98%; height:50px; margin-top:10px;}
+[name='name']			{width:400px; max-width:80%;}
+[name='dotExtension']	{width:40px!important;}
+[name='description']	{margin-top:10px;}
 .fileContentLabel		{margin-top:10px; font-style:italic;}
-[name='fileContent']	{width:98%; height:400px;}
+[name='fileContent']	{height:200px;}
 [name='fileContentOld']	{display:none;}
 </style>
 
 
-<form action="index.php" method="post" onsubmit="return formControl()" id="filesForm" enctype="multipart/form-data">
+<form id="mainForm" class="lightboxContent" enctype="multipart/form-data">
 
-	<fieldset class="fieldsetMarginTop sBlock">
-		<!--NOM & DESCRIPTION-->
-		<input type="text" name="name" value="<?= basename($curObj->name,strstr($curObj->name,'.')) ?>" class="editInputText" placeholder="<?= Txt::trad("name") ?>">
-		<input type="text" name="dotExtension" value="<?= strstr($curObj->name,'.') ?>" readonly>
-		<textarea name="description" placeholder="<?= Txt::trad("description") ?>"><?= $curObj->description ?></textarea>
-		<!--CONTENU MODIFIABLE : FICHIER TXT/HTML-->
-		<?php if(isset($fileContent)){ ?>
-			<div class="fileContentLabel"><?= Txt::trad("FILE_contenu") ?>:</div>
-			<textarea name="fileContent"><?= $fileContent ?></textarea>
-			<textarea name="fileContentOld"><?= $fileContent ?></textarea>
-			<?php if(isset($initHtmlEditor))	{echo CtrlMisc::initHtmlEditor("fileContent");} ?>
-		<?php } ?>
-	</fieldset>
+	<!--NOM & DESCRIPTION-->
+	<input type="text" name="name" value="<?= basename($curObj->name,strrchr($curObj->name,".")) ?>" class="textBig" placeholder="<?= Txt::trad("name") ?>">
+	<input type="text" name="dotExtension" value="<?= strrchr($curObj->name,".") ?>" readonly>
+	<textarea name="description" placeholder="<?= Txt::trad("description") ?>"><?= $curObj->description ?></textarea>
+	<!--CONTENU MODIFIABLE : FICHIER TXT/HTML-->
+	<?php if(isset($fileContent)){ ?>
+		<div class="fileContentLabel"><?= Txt::trad("FILE_fileContent") ?>:</div>
+		<textarea name="fileContent"><?= $fileContent ?></textarea>
+		<textarea name="fileContentOld"><?= $fileContent ?></textarea>
+		<?php if(isset($initHtmlEditor))	{echo CtrlMisc::initHtmlEditor("fileContent");} ?>
+	<?php } ?>
 
 	<!--MENU COMMUN-->
-	<?= $curObj->menuEditValidate() ?>
+	<?= $curObj->menuEdit() ?>
 </form>

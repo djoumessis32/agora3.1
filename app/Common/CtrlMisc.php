@@ -1,174 +1,200 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
- * Menus & actions indépendants des modules (communs)
+ * Controleur pour les opérations diverses
  */
 class CtrlMisc extends Ctrl
 {
-	/* Inexistant dans ce contexte: pas un module à part entière*/
-	public static function actionDefault(){}
+	//Pas d'initialisation complete du controleur
+	protected static $initCtrlFull=false;
 
 	/*
-	 * Surcharge de l'init du controleur principal
+	 * ACTION : Recherche d'objets sur tous l'espace
 	 */
-	public static function initCtrl()
+	public static function actionSearch()
 	{
-		//Pas d'initialisation complete du controleur (controle de connexion, selection d'espace, etc)
-		static::$initCtrlFull=false;
-		//Appel le constructeur parent
-		parent::initCtrl();
-	}
-
-	/*
-	 * AJAX : affiche les livecounters (principal/messenger) et les messages du messenger
-	 */
-	public static function actionLivecounterUpdate()
-	{
-		//User identifié et messenger activé?
-		if(self::$curUser->messengerEnabled())
+		//Init
+		$vDatas=[];
+		//Pour module, on liste les types d'objets et leurs champs de recherche : modifie le "title" et le "checked"
+		$vDatas["searchFields"]=[];
+		foreach(self::$curSpace->moduleList() as $tmpModule)
 		{
-			//Init
-			$ajaxResult=array();
-			//Supprime les users déconnectés de "ap_userLivecouter" & efface les messages obsoletes
-			if(empty($_SESSION["livecounterLastUpdate"])){
-				Db::query("DELETE FROM ap_userLivecouter WHERE date < ".(int)(time()-LIVECOUNTER_TIMEOUT));
-				Db::query("DELETE FROM ap_userMessengerMessage WHERE date < ".(int)(time()-MESSENGER_TIMEOUT));
-			}
-			//Update la date du livecounter de l'utilisateur courant
-			$sqlValues="ipAdress='".$_SERVER["REMOTE_ADDR"]."', date='".time()."'";
-			if(Db::getVal("SELECT count(*) FROM ap_userLivecouter WHERE _idUser=".self::$curUser->_id)==0)	{Db::query("INSERT INTO ap_userLivecouter SET _idUser=".self::$curUser->_id.", ".$sqlValues);}
-			else																							{Db::query("UPDATE ap_userLivecouter SET ".$sqlValues." WHERE _idUser=".self::$curUser->_id);}
-			//Users connectés
-			$livecounterUsersConnected=self::$curUser->livecounterUsersConnected();
-			//Affiche les livecounters (initialise le livecounter OU changement dans "livecounterUsersConnected")
-			if(Req::isParam("initLivecounter") || $livecounterUsersConnected!=$_SESSION["livecounterUsersConnected"])
-			{
-				//Aucun user connecté
-				if(empty($livecounterUsersConnected)){
-					$ajaxResult["livecounterPrincipal"]="";
-					$ajaxResult["livecounterMessenger"]="<span>".Txt::trad("HEADER_MENU_seul_utilisateur_connecte")."</span>";
-				}
-				//Liste des users connectés
-				else
-				{
-					$cpt=0;
-					//titles
-					$ajaxResult["livecounterPrincipal"]=Txt::trad("HEADER_MENU_en_ligne")." : ";
-					$ajaxResult["livecounterMessenger"]="";
-					//Affiche chaque user
-					foreach($livecounterUsersConnected as $tmpObj)
-					{
-						$cpt++;
-						$userLib=(empty($tmpObj->firstName)) ? $tmpObj->name : $tmpObj->firstName;
-						$userTitle=$tmpObj->display("all")." ".Txt::trad("HEADER_MENU_connecte_a")." ".strftime("%H:%M",$tmpObj->lastConnection);
-						//Livecounter principal
-						$ajaxResult["livecounterPrincipal"].="<label class='vLiveCounterUsers' onclick='showHideMessenger(".$tmpObj->_id.");' title=\"".$userTitle."\">".$userLib.($cpt<count($livecounterUsersConnected)?", ":"")."</label>";
-						//Livecounter messenger
-						$boxId="messengerUserBox".$tmpObj->_id;
-						$checked=(isset($_SESSION["messengerPostUsers"]) && in_array($tmpObj->_id,$_SESSION["messengerPostUsers"])) ? "checked" : "";
-						$ajaxResult["livecounterMessenger"].="<div class='vMessengerUser'>
-								<div class='vMessengerUserImg'>".$tmpObj->getImg(true,true)."</div>
-								<div class='vMessengerUserBox'><input type='checkbox' name='messengerPostUsers' value='".$tmpObj->_id."' id='".$boxId."' ".$checked."></div>
-								<label class='vMessengerUserLabel' for='".$boxId."' title=\"".$userTitle."\">".$userLib."</label>
-							</div>";
+			if(method_exists($tmpModule["ctrl"],"plugin")){
+				foreach($tmpModule["ctrl"]::$MdlObjects as $tmpMdlObject){
+					foreach($tmpMdlObject::$searchFields as $tmpField){
+						$vDatas["searchFields"][$tmpField]["checked"]=(!Req::isParam("searchFields") || in_array($tmpField,Req::getParam("searchFields"))) ? "checked" : "";
+						if(empty($vDatas["searchFields"][$tmpField]["title"]))	{$vDatas["searchFields"][$tmpField]["title"]="";}
+						$folderInTitle=preg_match("/".Txt::trad("objectFolder")."/i",$vDatas["searchFields"][$tmpField]["title"]);
+						if($tmpMdlObject::isFolder==true && $folderInTitle==false)	{$vDatas["searchFields"][$tmpField]["title"].="- ".Txt::trad("OBJECTfolder")."<br>";}
+						elseif($tmpMdlObject::isFolder==false)						{$vDatas["searchFields"][$tmpField]["title"].="- ".Txt::trad("OBJECT".$tmpMdlObject::objectType)."<br>";}
 					}
 				}
 			}
-			//Nouveau message sur le messenger?
-			$sqlMessagesLastDisplay=(isset($_SESSION["messengerMessagesLastDisplay"])) ? "AND date > ".(int)$_SESSION["messengerMessagesLastDisplay"] : "";
-			$messengerMessages=Db::getVal("SELECT count(*) FROM ap_userMessengerMessage WHERE _idUsers LIKE '%@".self::$curUser->_id."@%'  ".$sqlMessagesLastDisplay." ORDER BY date asc");
-			if($messengerMessages>0)	{$ajaxResult["messengerNewMessages"]=true;}
-			//Garde en mémoire la date du dernier Update et les derniers utilisateurs connectés
-			$_SESSION["livecounterUsersConnected"]=$livecounterUsersConnected;
-			$_SESSION["livecounterLastUpdate"]=time();
-			//Retourne le résultat au format JSON
-			echo json_encode($ajaxResult);
 		}
+		//Resultat de recherche
+		if(Req::isParam("formValidate"))
+		{
+			//Prépare la recherche
+			$vDatas["pluginsList"]=[];
+			$pluginParams=array("type"=>"search", "searchText"=>Txt::clean(Req::getParam("searchText")), "searchMode"=>Req::getParam("searchMode"), "searchFields"=>Req::getParam("searchFields"), "creationDate"=>Req::getParam("creationDate"), "searchModules"=>Req::getParam("searchModules"));
+			//Récupère les résultats
+			foreach(self::$curSpace->moduleList() as $tmpModule){
+				if(method_exists($tmpModule["ctrl"],"plugin") && in_array($tmpModule["ctrl"]::moduleName,Req::getParam("searchModules"))){
+					$vDatas["pluginsList"]=array_merge($vDatas["pluginsList"], $tmpModule["ctrl"]::plugin($pluginParams));
+				}
+			}
+			//Garde les termes de la recherche en session
+			$_SESSION["searchText"]=Req::getParam("searchText");
+		}
+		//Affiche la vue
+		static::displayPage(Req::commonPath."/VueSearch.php",$vDatas);
 	}
 
 	/*
-	 * AJAX : recupère les messages du messenger
+	 * AJAX : Update du Livecounter et du Messenger
 	 */
-	public static function actionMessengerGetMessages()
+	public static function actionLivecounterUpdate()
 	{
-		//User identifié et messenger activé?
+		//Messenger activé?
 		if(self::$curUser->messengerEnabled())
 		{
-			$messengerMessages="";
-			$dbMessages=Db::getTab("SELECT DISTINCT T1.*, T2.* FROM ap_userMessengerMessage T1, ap_user T2 WHERE T1._idUser=T2._id AND T1._idUsers LIKE '%@".self::$curUser->_id."@%' AND T1.date > ".(int)(time()-MESSENGER_TIMEOUT)." ORDER BY T1.date asc");
-			foreach($dbMessages as $tmpMessage)
+			////	UPDATE EN BDD LE LIVECOUNTER DE L'USER COURANT  && AJOUTE "editObjId" SI MODIF EN COURS D'UN OBJET  && AJOUTE "editorDraft" UNIQUEMENT S'IL EST PRECISE
+			$sqlValues="_idUser=".(int)self::$curUser->_id.", ipAdress=".Db::format($_SERVER["REMOTE_ADDR"]).", editObjId=".Db::formatParam("editObjId").", date=".Db::format(time());
+			if(Req::isParam("editorDraft"))  {$sqlValues.=", editorDraft=".Db::formatParam("editorDraft","editor").", draftTargetObjId=".Db::formatParam("editObjId");}//Ajouter uniquement si "editorDraft" est présent, sinon le "livecounterUpdate" efface le 'draft' et n'a donc plus d'intérêt..
+			Db::query("INSERT INTO ap_userLivecouter SET ".$sqlValues." ON DUPLICATE KEY UPDATE ".$sqlValues);
+
+			////	INIT LE MESSENGER EN DEBUT DE SESSION
+			if(!isset($_SESSION["livecounterUsersList"]))
 			{
-				$usersTab=Txt::txt2tab($tmpMessage["_idUsers"]);
-				$userTmp=self::getObj("user",$tmpMessage["_idUser"]);
-				$titleMessageTo=$userTmp->getImg()." ".$userTmp->display()." : ";
-				foreach($usersTab as $recipientId){
-					if($recipientId!=$tmpMessage["_idUser"])	{$titleMessageTo.=self::getObj("user",$recipientId)->display().", ";}
-				}
-				$title="<div class='vMessengerMessageTitle'>".Txt::trad("HEADER_MENU_envoye_a")." ".strftime("%H:%M",$tmpMessage["date"])."</div><div class='vMessengerMessageTitle'>".trim($titleMessageTo,", ")."</div>";
-				$usersAsterisk=(count($usersTab)>2)?"*":"";
-				$messengerMessages.="<div class='vMessengerMessageLine' title=\"".$title."\">
-										<div class='vMessengerMessageUser'>".$usersAsterisk.(empty($tmpMessage["firstName"])?$tmpMessage["name"]:$tmpMessage["firstName"])."</div>
-										<div class='vMessengerMessageContent' style='color:".$tmpMessage["color"]."'>".$tmpMessage["message"]."</div>
-									  </div>";
+				//Init les users connectés  &  La date d'affichage de chaque user  &  La liste des messages  &  L'affichage des users et des messages
+				$_SESSION["livecounterUsersList"]=$_SESSION["messengerUserDisplayTime"]=$_SESSION["messengerMessagesList"]=[];
+				$_SESSION["livecounterUsersHtml"]=$_SESSION["messengerUsersHtml"]=$_SESSION["messengerMessagesHtml"]="";
+				//Supprime les livecounters des users déconnectés & Les vieux messages du messenger & Les vieilles proposition de visio
+				Db::query("DELETE FROM ap_userLivecouter WHERE date < ".intval(time()-604800));//Users du Livecounter (avec draft/brouillon du TinyMce) : conservés 7jours max
+				Db::query("DELETE FROM ap_userMessengerMessage WHERE date < ".intval(time()-604800));//Messages du messenger : idem
+				Db::query("DELETE FROM ap_userMessengerMessage WHERE message LIKE '%launchVisioMessage%' AND date < ".intval(time()-7200));//Messages avec proposition de visio : conservés 2h max
+				//Garde en session les users que l'on peut voir et n'ayant pas bloqué leur messenger
+				$idsUsers=[0];//pseudo user
+				foreach(self::$curUser->usersVisibles() as $tmpUser)  {$idsUsers[]=$tmpUser->_id;}
+				$messengerUsersSql=Db::getCol("SELECT _id FROM ap_user WHERE _id!=".self::$curUser->_id." AND _id IN (".implode(",",$idsUsers).") AND _id IN (select _idUserMessenger from ap_userMessenger where allUsers=1 or _idUser=".self::$curUser->_id.")");
+				$_SESSION["messengerUsersSql"]=implode(",", array_merge($messengerUsersSql,[0]));//ajoute le pseudo user "0"
 			}
-			$_SESSION["messengerMessagesLastDisplay"]=time();
-			echo $messengerMessages;
+
+			////	RECUPERE LES LIVECOUNTERS (LISTE DES USERS)
+			//Verif si ya un changement du livecounter (connection/deconnection)
+			$livercounterUsersOld=$_SESSION["livecounterUsersList"];
+			$livecounterDateTimeout=time()-40;//On considère les autres users comme "déconnectés" du livecounter au bout de 40 secondes d'inactivité
+			$_SESSION["livecounterUsersList"]=Db::getObjTab("user", "SELECT DISTINCT T1.* FROM ap_user T1, ap_userLivecouter T2 WHERE T1._id=T2._idUser AND T1._id IN (".$_SESSION["messengerUsersSql"].") AND T2.date > ".$livecounterDateTimeout);
+			$result["livercounterUpdate"]=(count($livercounterUsersOld)!=count($_SESSION["livecounterUsersList"]));//Note : ne pas comparer directement les tableaux d'objet, mais uniquement leur taille
+
+			////	AFFICHAGE DES USERS CONNECTÉS
+			if($result["livercounterUpdate"]==true)
+			{
+				//Init les users du livecounter et du messenger
+				$_SESSION["livecounterUsersHtml"]=$_SESSION["messengerUsersHtml"]="";
+				//Affiche chaque user connecté
+				foreach($_SESSION["livecounterUsersList"] as $tmpUser)
+				{
+					//Label && Image des users du livecounter principal
+					$userTitle=$tmpUser->getLabel()."<br>".Txt::trad("MESSENGER_connectedSince")." ".date("H:i",$tmpUser->lastConnection);
+					$messengerUserImg=(Req::isMobile()==false && $tmpUser->hasImg())  ?  $tmpUser->getImg(false,true)."&nbsp;"  :  null;
+					$livecounterUserImg=(Req::isMobile()==false && count($_SESSION["livecounterUsersList"])<10)  ?  $messengerUserImg  :  null;//Pas d'img sur mobile ou si ya + de 10 users
+					//Affichage des livecounters
+					$_SESSION["livecounterUsersHtml"].="<label class='vLivecounterUser' onclick='messengerDisplay(".$tmpUser->_id.");' title=\"".$userTitle."\" data-idUser=".$tmpUser->_id.">".$livecounterUserImg.$tmpUser->getLabel("firstName")."</label>";
+					$_SESSION["messengerUsersHtml"].="<div class='vMessengerUser'>
+																<input type='checkbox' name='messengerUsers' value='".$tmpUser->_id."' id='messengerUsers".$tmpUser->_id."'>
+																<label for='messengerUsers".$tmpUser->_id."' title=\"".Txt::trad("select")." ".$userTitle."\">".$messengerUserImg.$tmpUser->getLabel("firstName")."</label>
+															</div>";
+				}
+				//Ajoute "inverser la sélection" si ya 5 users ou+
+				if(count($_SESSION["livecounterUsersList"])>=5)  {$_SESSION["messengerUsersHtml"].="<div class='vMessengerUser' id='checkUserAll'><label onclick=\"$('label[for^=messengerUsers]').trigger('click');\"><img src='app/img/checkSelect.png'> &nbsp; ".Txt::trad("invertSelection")."</label></div>";}
+			}
+
+			////	AFFICHAGE DES MESSAGES DU MESSENGER
+			$result["messengerPulsateUsers"]=[];
+			if(!empty($_SESSION["livecounterUsersList"]))
+			{
+				//// Verif si ya de nouveaux messages
+				$messengerMessagesListOld=$_SESSION["messengerMessagesList"];
+				$_SESSION["messengerMessagesList"]=Db::getTab("SELECT * FROM ap_userMessengerMessage WHERE _idUsers LIKE '%@".self::$curUser->_id."@%' ORDER BY date asc");
+				$result["messengerUpdate"]=(count($messengerMessagesListOld)!=count($_SESSION["messengerMessagesList"]));
+				//// Affichage des messages (Init OU nouveaux messages)
+				if($result["messengerUpdate"]==true)
+				{
+					$_SESSION["messengerMessagesHtml"]="";
+					foreach($_SESSION["messengerMessagesList"] as $message)
+					{
+						//Init l'affichage
+						$objAutor=self::getObj("user",$message["_idUser"]);
+						$autorLabelImg=$objAutor->hasImg()  ?  $objAutor->getImg(false,true)  :  " - ".$objAutor->getLabel("firstName");
+						//Liste des destinataires
+						$destList=Txt::txt2tab($message["_idUsers"]);
+						$destMultiple=(count($destList)>2)  ?  "**"  :  null;
+						$destLabel=Txt::trad("MESSENGER_sendAt")." ";
+						foreach($destList as $userId)  {if($userId!=$objAutor->_id) {$destLabel.=self::getObj("user",$userId)->getLabel().", ";}}
+						//Affichage du message
+						$_SESSION["messengerMessagesHtml"].="<table class='vMessengerMessage' title=\"".trim($destLabel,", ")."\" data-idUsers=\"".$message["_idUsers"]."\"><tr>
+																<td>".date("H:i",$message["date"]).$autorLabelImg.$destMultiple."</td>
+																<td data-idAutor=\"".$message["_idUser"]."\">".$message["message"]."</td>
+															 </tr></table>";
+					}
+				}
+				//// Fait clignoter les users qui viennent de poster un nouveau message (via "pulsate")
+				foreach($_SESSION["messengerMessagesList"] as $message){
+					if((time()-$message["date"])>1200)  {continue;}//on zappe les messages qui datent de plus de 20mn (évite le "pulstate" d'anciens messages si on vient de se connecter)
+					$idUserTmp=$message["_idUser"];//Auteur du message
+					$userInLivecounter=(isset($_SESSION["livecounterUsersList"][$idUserTmp]) && !isset($result["messengerPulsateUsers"][$idUserTmp]));//User connecté (affiché dans le livecounter) mais pas encore ajouté au "messengerPulsateUsers" (évite les doublons de pulsate)
+					$userMessagesNotDisplayed=(!isset($_SESSION["messengerUserDisplayTime"][$idUserTmp]) || $message["date"]>$_SESSION["messengerUserDisplayTime"][$idUserTmp]);//User pas encore affiché OU affiché avant que ne soit posté le message
+					if($userInLivecounter==true && $userMessagesNotDisplayed==true)  {$result["messengerPulsateUsers"][]=$idUserTmp;}//Ajoute alors l'user au "messengerPulsateUsers"
+				}
+			}
+
+			////	RETOURNE LE RÉSULTAT AU FORMAT JSON
+			$result["livecounterUsersHtml"]=$_SESSION["livecounterUsersHtml"];
+			$result["messengerUsersHtml"]=$_SESSION["messengerUsersHtml"];
+			$result["messengerMessagesHtml"]=$_SESSION["messengerMessagesHtml"];
+			echo json_encode($result);
 		}
 	}
 
 	/*
-	 * AJAX : Post d'un message sur le messenger
+	 * AJAX : Update le "time" d'affichage d'un user du messenger
+	 */
+	public static function actionMessengerUserDisplayTime()
+	{
+		$_SESSION["messengerUserDisplayTime"][Req::getParam("_idUser")]=time();
+	}
+
+	/*
+	 * AJAX : Post d'un message sur le messenger (note : les messages sont encodés en "utf8mb4" pour le support des "emoji" sur mobile)
 	 */
 	public static function actionMessengerPostMessage()
 	{
-		//User identifié et messenger activé?
 		if(self::$curUser->messengerEnabled())
 		{
-			$usersIds=Req::getParam("messengerPostUsers");
+			$usersIds=Req::getParam("messengerUsers");
 			$usersIds[]=self::$curUser->_id;
-			Db::query("INSERT INTO ap_userMessengerMessage SET _idUser=".self::$curUser->_id.", _idUsers=".Db::formatTab2txt($usersIds).", message=".Db::formatParam("message").", color=".Db::formatParam("color").", date='".time()."'");
-			$_SESSION["messengerPostColor"]=Req::getParam("color");
-			$_SESSION["messengerPostUsers"]=$usersIds;
+			$message=Db::formatParam("message");
+			if(stristr(Req::getParam("message"),"launchVisioMessage"))  {$message=Db::formatParam("message","editor");}//Appel visio : on ne filtre pas tous les "tags"
+			Db::query("INSERT INTO ap_userMessengerMessage SET _idUser=".self::$curUser->_id.", _idUsers=".Db::formatTab2txt($usersIds).", message=".$message.", date=".Db::format(time()));
+			$_SESSION["messengerUsers"]=$usersIds;
 		}
 	}
 
 	/*
-	 * AJAX : Post d'un message sur le messenger
+	 * VISIO JITSI : URL de la "Room" de l'user courant (Exple : "visioconf.mondomaine.com/5BV3X-omnispace-boby")
 	 */
-	public static function actionMessengerDownloadMessages()
+	public static function myVideoRoomURL()
 	{
-		//User identifié et messenger activé?
-		if(self::$curUser->messengerEnabled())
-		{
-			$htmlReturn="";
-			$messages=Db::getTab("SELECT DISTINCT T1.*, T2.* FROM ap_userMessengerMessage T1, ap_user T2 WHERE T1._idUser=T2._id AND T1._idUsers LIKE '%@".self::$curUser->_id."@%' ORDER BY  T1.date asc");
-			foreach($messages as $message)
-			{
-				$destLib=Txt::trad("HEADER_MENU_envoye_a")." ";
-				foreach(Txt::txt2tab($message["_idUsers"]) as $userId){
-					if($userId!=$message["_idUser"])	{$destLib.=self::getObj("user",$userId)->display().", ";}
-				}
-				$htmlReturn .= "<div style='display:table;width:100%;'>
-									<div style='display:table-cell;width:300px;border:solid 1px #999;padding:5px;'> ".Txt::displayDate($message["date"])." : ".$message["name"]." ".$message["firstName"]."</div>
-									<div style='display:table-cell;width:300px;border:solid 1px #999;padding:5px;'>".trim($destLib,", ")."</div>
-									<div style='display:table-cell;border:solid 1px #999;padding:5px;'>".$message["message"]."</div>
-								</div>";
-			}
-			$htmlReturn="<html xmlns='http://www.w3.org/1999/xhtml'>
-							<head><meta charset='utf-8'></head>
-							<body>".$htmlReturn."</body>
-						 </html>";
-			//Telechargement
-			File::download("messenger.html", null, $htmlReturn);
-		}
-	}
-
-	/*
-	 * AJAX : Verifie si un compte utilisateur existe dejà, avec un mail en parametre (exple:"?ctrl=misc&action=UserAccountExist&mail=test%40test.test")
-	 */
-	public static function actionUserAccountExist()
-	{
-		if(Req::isParam("mail") && Db::getVal("SELECT count(*) FROM ap_user WHERE mail=".Db::formatParam("mail")." OR login=".Db::formatParam("mail"))>0)
-			{echo "true";}
+		if(!isset($_SESSION["myVideoRoomURL"]))  {$_SESSION["myVideoRoomURL"]=Ctrl::$agora->visioHost()."/Omnispace-".Txt::uniqId(5)."-".substr(Txt::clean(Ctrl::$curUser->getLabel(),"max"),0,5);}
+		return $_SESSION["myVideoRoomURL"];
 	}
 
 	/*
@@ -187,7 +213,7 @@ class CtrlMisc extends Ctrl
 		//Init
 		$width=120;
 		$height=28;
-		$fontSize=21;
+		$fontSize=20;
 		$caracNb=4;
 		$colorLines=array("#DD6666","#66DD66","#6666DD","#DDDD66","#DD66DD","#66DDDD","#666666");
 		$colorFonts=array("#880000","#008800","#000088","#888800","#880088","#008888","#000000");
@@ -195,8 +221,8 @@ class CtrlMisc extends Ctrl
 		//Creation de l'image
 		$image=imagecreatetruecolor($width, $height);
 		imagefilledrectangle($image, 0, 0, $width-1, $height-1, self::captchaColor("#FFFFFF"));
-		//Dessine 20 lines en background
-		for($i=0; $i < 20; $i++){
+		//Dessine 15 lines en background
+		for($i=0; $i < 15; $i++){
 			imageline($image, mt_rand(0,$width-1), mt_rand(0,$height-1), mt_rand(0,$width-1), mt_rand(0,$height-1), self::captchaColor($colorLines[mt_rand(0,count($colorLines)-1)]));
 		}
 		//Dessine le texte
@@ -205,14 +231,14 @@ class CtrlMisc extends Ctrl
 		for($i=0; $i < $caracNb; $i++)
 		{
 			// pour chaque caractere : Police + couleur + angulation
-			$captcha_font="app/misc/captchaFonts/".mt_rand(1,4).".ttf";
+			$captchaFont="app/misc/captchaFonts/".mt_rand(1,4).".ttf";
 			$color=self::captchaColor($colorFonts[mt_rand(0,count($colorFonts)-1)]);
 			$angle=mt_rand(-20,20);
 			// sélectionne le caractère au hazard
 			$char=substr($caracs, mt_rand(0,strlen($caracs) - 1), 1);
 			$x=(intval(($width/$caracNb) * $i) + ($fontSize / 2)) - 4;
-			$_SESSION["captcha"] .= $char;
-			imagettftext($image, $fontSize, $angle, $x, $y, $color, $captcha_font, $char);
+			$_SESSION["captcha"].=$char;
+			imagettftext($image, $fontSize, $angle, $x, $y, $color, $captchaFont, $char);
 		}
 		// Captcha dans Session + affichage de l'image
 		header("Content-Type: image/jpeg");
@@ -228,21 +254,27 @@ class CtrlMisc extends Ctrl
 	}
 
 	/*
-	 * AJAX : controle d'un captcha
+	 * Controle du Captcha (Ajax ou Direct)
 	 */
 	public static function actionCaptchaControl()
 	{
-		echo (Req::isParam("captcha") && Req::getParam("captcha")==$_SESSION["captcha"]) ? "true" : "false";
+		if($_SESSION["captcha"]==Req::getParam("captcha")){
+			if(Req::$curAction=="CaptchaControl")	{echo "true";}//Controle Ajax
+			else									{return true;}//Controle Direct
+		}
 	}
 
 	/*
-	 * VUE : Renvoie l'initialisation de l'editeur TinyMCE (doit déjà y avoir un chanmp "textarea")				(ex "init_editeur_tinymce()")
+	 * VUE : Initialisation de l'editeur TinyMCE (doit déjà y avoir un champ "textarea")
 	 */
 	public static function initHtmlEditor($fieldName)
 	{
-		$vDatas=array(
-			"fieldName"=>$fieldName
-		);
+		//Nom du champ "textarea"
+		$vDatas["fieldName"]=$fieldName;
+		//Sélectionne au besoin le "draftTargetObjId" pour n'afficher que le brouillon/draft de l'objet précédement édité (on n'utilise pas "editObjId" car il est effacé dès qu'on sort de l'édition de l'objet...)
+		$sqlTargetObjId=(Req::isParam("targetObjId"))  ?  "draftTargetObjId=".Db::formatParam("targetObjId")  :  "draftTargetObjId IS NULL";
+		$vDatas["editorDraft"]=Db::getVal("SELECT editorDraft FROM ap_userLivecouter WHERE _idUser=".Ctrl::$curUser->_id." AND ".$sqlTargetObjId);
+		//Affiche la vue de l'éditeur TinyMce
 		return self::getVue(Req::commonPath."VueHtmlEditor.php",$vDatas);
 	}
 
@@ -251,7 +283,23 @@ class CtrlMisc extends Ctrl
 	 */
 	public static function actionPersonsMap()
 	{
-		static::displayPage(Req::commonPath."VuePersonsMap.php");
+		//Liste les personnes/adresses à afficher
+		$adressList=[];
+		foreach(Ctrl::getTargetObjects() as $tmpPerson)
+		{
+			//La personne est visible et possède une adresse
+			if($tmpPerson->readRight() && method_exists($tmpPerson,"hasAdress") && $tmpPerson->hasAdress()){
+				$tmpAdress=trim($tmpPerson->adress.", ".$tmpPerson->postalCode." ".str_ireplace("cedex",null,$tmpPerson->city)." ".$tmpPerson->country,  ", ");
+				$tmpLabel=$tmpPerson->getLabel()." <br> ".$tmpAdress;
+				if(!empty($tmpPerson->companyOrganization) || !empty($tmpPerson->function))  {$tmpLabel.="<br>".trim($tmpPerson->function." - ".$tmpPerson->companyOrganization, " - ");}
+				$tmpImg=($tmpPerson->hasImg())  ?  $tmpPerson->getImgPath()  :  "app/img/mapBig.png";
+				$adressList[]=["adress"=>$tmpAdress, "personLabel"=>$tmpLabel, "personImg"=>$tmpImg];
+			}
+		}
+		//Affiche la carte Gmap ou Leaflet
+		$vDatas["adressList"]=json_encode($adressList);
+		$vDatas["mapTool"]=Ctrl::$agora->gMapsEnabled()  ?  "gmap"  :  "leaflet";
+		static::displayPage(Req::commonPath."VuePersonsMap.php",$vDatas);
 	}
 
 	/*
@@ -263,7 +311,7 @@ class CtrlMisc extends Ctrl
 		$vDatas["wallpaperList"]=array();
 		$filesList=array_merge(scandir(PATH_WALLPAPER_DEFAULT),scandir(PATH_WALLPAPER_CUSTOM));
 		foreach($filesList as $tmpFile){
-			if($tmpFile!='.' && $tmpFile!='..' && File::controlType("imageBrowser",$tmpFile)){
+			if(!in_array($tmpFile,['.','..']) && File::isType("imageBrowser",$tmpFile)){
 				$path=(is_file(PATH_WALLPAPER_DEFAULT.$tmpFile))  ?  PATH_WALLPAPER_DEFAULT.$tmpFile  :  PATH_WALLPAPER_CUSTOM.$tmpFile;
 				$value=(is_file(PATH_WALLPAPER_DEFAULT.$tmpFile))  ?  WALLPAPER_DEFAULT_PREFIX.$tmpFile  :  $tmpFile;
 				$nameRacine=str_replace(File::extension($tmpFile),null,$tmpFile);
@@ -291,10 +339,31 @@ class CtrlMisc extends Ctrl
 	}
 
 	/*
-	 * PATH DU LOGO EN BAS DE PAGE
+	 * ACTION : affiche un fichier Ical
 	 */
-	public static function pathfooterLogo()
+	public static function actionDisplayIcal()
 	{
-		return (!empty(self::$agora->logo) && is_file(PATH_DATAS.self::$agora->logo))  ?  PATH_DATAS.self::$agora->logo  :  "app/img/logoFooter.png";
+		$objCalendar=self::getTargetObj();
+		if(is_object($objCalendar) && $objCalendar->md5IdControl())  {CtrlCalendar::getIcal($objCalendar);}
+	}
+
+	/*
+	 * Modif l'URL de download/Affichage d'un fichier depuis une mobileApp => modif du controleur, ajout du "nameMd5" et du type de fichier à télécharger
+	 */
+	public static function appGetFileUrl($downloadUrl, $fileName)
+	{
+		$downloadUrl.=(stristr($downloadUrl,"ctrl=object"))  ?  "&fileType=attached"  :  "&fileType=modFile";	//Fichier joint d'un objet  OU  Fichier du module "File"  => Toujours modifier en premier !
+		$downloadUrl=str_ireplace(["ctrl=object","ctrl=file"],"ctrl=misc",$downloadUrl);						//Switch sur le controleur "ctrl=misc" (cf. "$initCtrlFull=false")
+		return $downloadUrl."&nameMd5=".md5($fileName);															//Ajoute le "nameMd5" du controle d'accès (cf. "CtrlObject::actionGetFile()" && "CtrlFile::actionGetFile()")
+	}
+
+	/*
+	 * ACTION : Download/Affichage d'un fichier depuis une mobileApp (avec controle du "nameMd5" & co)
+	 */
+	public static function actionGetFile()
+	{
+		if(Req::isParam(["fileName","filePath"]))		{File::download(Req::getParam("fileName"),Req::getParam("filePath"));}	//Affichage d'un pdf (exple: "Documentation.pdf" du "VueHeaderMenu.php"). Tjs mettre "fromMobileApp=true" dans l'url pour ne pas annuler le "File::download()"
+		elseif(Req::getParam("fileType")=="attached")	{CtrlObject::actionGetFile();}											//Download d'un fichier "AttachedFile"
+		else											{CtrlFile::actionGetFile();}											//Download d'un fichier du module "File"
 	}
 }

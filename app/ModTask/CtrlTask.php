@@ -1,4 +1,12 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Controleur du module "Task"
  */
@@ -6,7 +14,7 @@ class CtrlTask extends Ctrl
 {
 	const moduleName="task";
 	public static $folderObjectType="taskFolder";
-	public static $moduleOptions=["AdminRootFolderAddContent"];
+	public static $moduleOptions=["adminRootAddContent"];
 	public static $MdlObjects=array("MdlTask","MdlTaskFolder");
 
 	/*
@@ -14,10 +22,9 @@ class CtrlTask extends Ctrl
 	 */
 	public static function actionDefault()
 	{
-		static::$isMainPage=true;
-		$vDatas["foldersList"]=self::$curContainer->foldersList();
+		$vDatas["foldersList"]=self::$curContainer->folders();
 		$filterPriority=Req::getParam("filterPriority")>=1 ? "AND priority=".Db::formatParam("filterPriority") : null;
-		$vDatas["tasksList"]=Db::getObjTab("task", "SELECT * FROM ap_task WHERE ".MdlTask::sqlDisplayedObjects(self::$curContainer)." ".$filterPriority." ".MdlTask::sqlSort(self::$curContainer));
+		$vDatas["tasksList"]=Db::getObjTab("task", "SELECT * FROM ap_task WHERE ".MdlTask::sqlDisplayedObjects(self::$curContainer)." ".$filterPriority." ".MdlTask::sqlSort());
 		////	TIMELINE/GANTT
 		$timelineBegin=$timelineEnd=null;
 		$vDatas["timelineTasks"]=$vDatas["timelineDays"]=[];
@@ -54,10 +61,12 @@ class CtrlTask extends Ctrl
 				$vDatas["timelineDays"][]=array(
 					"curDate"=>date("Y-m-d",$dayTimeBegin),
 					"timeBegin"=>$dayTimeBegin,
-					"newMonthLabel"=>$newMonth==true ? ucfirst(Txt::formatime("%B %Y",$dayTimeBegin)) : null,
+					"newMonthLabel"=>($newMonth==true ? ucfirst(Txt::formatime("%B %Y",$dayTimeBegin)) : null),
 					"newMonthColspan"=>(date("t",$dayTimeBegin)-date("j",$dayTimeBegin)+1),
-					"classBorderLeft"=>($dayTimeBegin==$timelineBegin || date("N",$dayTimeBegin)==1 || date("j",$dayTimeBegin)==1)  ?  "vTimelineLeftBorder"  :  null,//début de timeline/de mois/de semaine : affiche les pointillés
-					"dayLabel"=>date("j",$dayTimeBegin)
+					"vTimelineLeftBorder"=>(($dayTimeBegin==$timelineBegin || date("N",$dayTimeBegin)==1 || date("j",$dayTimeBegin)==1)  ?  "vTimelineLeftBorder"  :  null),//début de timeline/de mois/de semaine : affiche les pointillés
+					"vTimelineToday"=>(date("Y-m-d",$dayTimeBegin)==date("Y-m-d")  ?  "vTimelineToday"  :  null),//Label d'aujourd'hui
+					"dayLabel"=>date("j",$dayTimeBegin),
+					"dayLabelTitle"=>Txt::displayDate($dayTimeBegin,"dateFull")
 				);
 				$tmpMonth=date("m",$dayTimeBegin);
 			}
@@ -73,20 +82,19 @@ class CtrlTask extends Ctrl
 	 */
 	public static function plugin($pluginParams)
 	{
-		$pluginParams=array_merge($pluginParams,array("MdlObjectFolder"=>"MdlTaskFolder"));
-		$pluginsList=self::getPluginsFolders($pluginParams);
+		$pluginsList=self::getPluginsFolders($pluginParams,"MdlTaskFolder");
 		foreach(MdlTask::getPluginObjects($pluginParams) as $tmpObj)
 		{
 			$tmpObj->pluginModule=self::moduleName;
-			$tmpObj->pluginIcon=(isset($tmpObj->pluginIsCurrent) && $pluginParams["type"]=="dashboard") ? "newObj2.png" : "task/icon.png";
-			$tmpObj->pluginLabel=(!empty($tmpObj->title)) ? $tmpObj->title : Txt::reduce($tmpObj->description);
-			$tmpObj->pluginTitle=$tmpObj->containerObj()->folderPath("text")."<br>".$tmpObj->displayAutor(true,true);
+			$tmpObj->pluginIcon=self::moduleName."/icon.png";
+			$tmpObj->pluginLabel=(!empty($tmpObj->title))  ?  $tmpObj->title  :  $tmpObj->description;
+			$tmpObj->pluginTooltip=$tmpObj->containerObj()->folderPath("text")."<hr>".$tmpObj->description;
 			if(!empty($tmpObj->dateBegin) || !empty($tmpObj->dateEnd)){
-				if(!empty($tmpObj->dateBegin))		{$displayTime=Txt::displayDate($tmpObj->dateBegin,"normal",$tmpObj->dateEnd);}
-				elseif(!empty($tmpObj->dateEnd))	{$displayTime=Txt::trad("fin")." : ".Txt::displayDate($tmpObj->dateEnd,"normal");}
-				$tmpObj->pluginTitle.="<br>".$displayTime;
+				if(!empty($tmpObj->dateBegin))		{$displayTime=Txt::displayDate($tmpObj->dateBegin,"full",$tmpObj->dateEnd);}
+				elseif(!empty($tmpObj->dateEnd))	{$displayTime=Txt::trad("end")." : ".Txt::displayDate($tmpObj->dateEnd,"normal");}
+				$tmpObj->pluginTooltip.="<br>".$displayTime;
 			}			
-			$tmpObj->pluginJsIcon="redir('".$tmpObj->getUrl("container")."',true);";
+			$tmpObj->pluginJsIcon="windowParent.redir('".$tmpObj->getUrl("container")."');";//Redir vers le dossier conteneur
 			$tmpObj->pluginJsLabel="lightboxOpen('".$tmpObj->getUrl("vue")."');";
 			$pluginsList[]=$tmpObj;
 		}
@@ -94,9 +102,9 @@ class CtrlTask extends Ctrl
 	}
 
 	/*
-	 * ACTION : tache détaillé
+	 * ACTION : Vue détaillée d'une tache
 	 */
-	public static function actionTaskVue()
+	public static function actionVueTask()
 	{
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlRead();
@@ -112,14 +120,14 @@ class CtrlTask extends Ctrl
 		//Init
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlEdit();
-		////	Formulaire validé
+		////	Valide le formulaire
 		if(Req::isParam("formValidate")){
 			//Enregistre & recharge l'objet
 			$dateBegin=Txt::formatDate(Req::getParam("dateBegin")." ".Req::getParam("timeBegin"), "inputDatetime", "dbDatetime");
 			$dateEnd=Txt::formatDate(Req::getParam("dateEnd")." ".Req::getParam("timeEnd"), "inputDatetime", "dbDatetime");
-			$curObj=$curObj->createUpdate("title=".Db::formatParam("title").", description=".Db::formatParam("description","editor").", dateBegin=".Db::format($dateBegin).", dateEnd=".Db::format($dateEnd).", advancement=".Db::formatParam("advancement").", priority=".Db::formatParam("priority").", budgetAvailable=".Db::formatParam("budgetAvailable").", budgetEngaged=".Db::formatParam("budgetEngaged").", humanDayCharge=".Db::formatParam("humanDayCharge","float").", responsiblePersons=".Db::formatTab2txt(Req::getParam("responsiblePersons")));
+			$curObj=$curObj->createUpdate("title=".Db::formatParam("title").", description=".Db::formatParam("description","editor").", dateBegin=".Db::format($dateBegin).", dateEnd=".Db::format($dateEnd).", advancement=".Db::formatParam("advancement").", priority=".Db::formatParam("priority").", responsiblePersons=".Db::formatTab2txt(Req::getParam("responsiblePersons")));
 			//Notifie par mail & Ferme la page
-			$curObj->sendMailNotif("<b>".$curObj->title."</b><br>".$curObj->description);
+			$curObj->sendMailNotif();
 			static::lightboxClose();
 		}
 		////	Affiche la vue

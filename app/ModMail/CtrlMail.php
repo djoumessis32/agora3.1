@@ -1,4 +1,12 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Controleur du module "Mail"
  */
@@ -11,11 +19,10 @@ class CtrlMail extends Ctrl
 	 */
 	public static function actionDefault()
 	{
-		//Init
-		if(Ctrl::$curUser->isUser()==false)  {Ctrl::noAccessExit();}
-		static::$isMainPage=true;
+		////	Init et Controle d'accès
 		$vDatas["containerList"]=array();
-		//Envoi de mail!
+		if(Ctrl::$curUser->isUser()==false)  {Ctrl::noAccessExit();}
+		////	Envoi de mail!
 		if(Req::isParam("formValidate","title","description") && (Req::isParam("personList") || Req::isParam("groupList")))
 		{
 			////	liste des destinataires : personList & groupes d'users
@@ -49,10 +56,10 @@ class CtrlMail extends Ctrl
 			if(Req::getParam("hideRecipients"))	{$options.="hideRecipients,";}
 			if(Req::getParam("noFooter"))		{$options.="noFooter,";}
 			////	Fichiers joints
-			$attachedFiles=array();
+			$attachedFiles=[];
 			if(!empty($_FILES)){
 				foreach($_FILES as $tmpFile){
-					if(is_file($tmpFile["tmp_name"]))	{$attachedFiles[]=array("path"=>$tmpFile["tmp_name"],"name"=>$tmpFile["name"]);}
+					if(is_file($tmpFile["tmp_name"]))  {$attachedFiles[]=array("path"=>$tmpFile["tmp_name"],"name"=>$tmpFile["name"]);}
 				}
 			}
 			////	Envoi du mail
@@ -61,23 +68,24 @@ class CtrlMail extends Ctrl
 				Db::query("INSERT INTO ap_mailHistory SET recipients=".Db::format(trim($txtMailTo,",")).", title=".Db::formatParam("title").", description=".Db::formatParam("description","editor").", dateCrea=".Db::dateNow().", _idUser=".Ctrl::$curUser->_id);
 			}
 		}
+		////	Supprime les anciens mails de plus d'1 an
+		Db::query("DELETE FROM ap_mailHistory WHERE UNIX_TIMESTAMP(dateCrea) <= ".intval(time()-(360*86400)));
 		////	Liste des espaces et users associés
 		foreach(Ctrl::$curUser->getSpaces() as $tmpContainer){
 			$tmpContainer->personList=$tmpContainer->getUsers();
-			if(!empty($tmpContainer->personList))	{$vDatas["containerList"][]=$tmpContainer;}
+			if(!empty($tmpContainer->personList))  {$vDatas["containerList"][]=$tmpContainer;}
 		}
-		////	Arborescence de dossier de dossiers de contacts
-		$rootFolder=new MdlContactFolder(1);
-		foreach($rootFolder->folderTree() as $tmpContainer){
+		////	Arborescence des dossiers de contacts (du dossier "root")
+		foreach(Ctrl::getObj("MdlContactFolder",1)->folderTree() as $tmpContainer){
 			$tmpContainer->personList=Db::getObjTab("contact", "SELECT * FROM ap_contact WHERE LENGTH(mail)>0 AND ".MdlContact::sqlDisplayedObjects($tmpContainer)." ".MdlContact::sqlSort());
-			if(!empty($tmpContainer->personList))	{$vDatas["containerList"][]=$tmpContainer;}
+			if(!empty($tmpContainer->personList))  {$vDatas["containerList"][]=$tmpContainer;}
 		}
-		$vDatas["checkhideRecipients"]=(strlen(Ctrl::prefUser("hideRecipients",null,null,true))>0) ? "checked" : null;
+		$vDatas["checkhideRecipients"]=(strlen(Ctrl::prefUser("hideRecipients",null,true))>0) ? "checked" : null;
 		static::displayPage("VueIndex.php",$vDatas);
 	}
-	
+
 	/*
-	 * VUE : HITORIQUE DES MAILS QUE L'USER COURANT A ENVOYE///!!!TESTER AVEC "HOST"CONSERVER LES TEXTES ET FICHIERS JOINTS DES ANCIENS MAILS : NEWSLETTER RECCURENTE
+	 * VUE : HITORIQUE DES MAILS QUE L'USER COURANT A ENVOYE
 	 */
 	public static function actionMailHistory()
 	{

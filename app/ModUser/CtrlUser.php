@@ -1,11 +1,19 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Controleur du module "User"
  */
 class CtrlUser extends Ctrl
 {
 	const moduleName="user";
-	public static $moduleOptions=["ajout_utilisateurs_groupe"];
+	public static $moduleOptions=["allUsersAddGroup"];
 	public static $MdlObjects=array("MdlUser");
 
 	/*
@@ -13,19 +21,19 @@ class CtrlUser extends Ctrl
 	 */
 	public static function actionDefault()
 	{
-		static::$isMainPage=true;
 		//Affichage des utilisateurs : "space" / "all"
 		if(Req::isParam("displayUsers"))	{$_SESSION["displayUsers"]=(Req::getParam("displayUsers")=="all" && self::$curUser->isAdminGeneral()) ? "all" : "space";}
 		//Filtre Alphabet : avec la première lettre du nom
-		$vDatas["alphabetList"]=Db::getCol("SELECT DISTINCT UPPER(LEFT(name,1)) FROM ".MdlUser::dbTable." WHERE ".MdlUser::sqlDisplayedObjects()." ORDER BY name");
+		$vDatas["alphabetList"]=Db::getCol("SELECT DISTINCT UPPER(LEFT(name,1)) as initiale FROM ".MdlUser::dbTable." WHERE ".MdlUser::sqlDisplayedObjects()." ORDER BY initiale");
 		$sqlAlphabetFilter=(Req::isParam("alphabet")) ? "AND name LIKE '".Req::getParam("alphabet")."%'" : null;
 		//Utilisateurs et menus
 		$sqlDisplayedUsers="SELECT * FROM ".MdlUser::dbTable." WHERE ".MdlUser::sqlDisplayedObjects()." ".$sqlAlphabetFilter." ".MdlUser::sqlSort();
 		$vDatas["displayedUsers"]=Db::getObjTab("user", $sqlDisplayedUsers." ".MdlUser::sqlPagination());
-		$vDatas["displayedUsersTotalNb"]=count(Db::getTab($sqlDisplayedUsers));
-		$vDatas["displayedUsersAllAffected"]=(Ctrl::$curUser->isAdminCurSpace() && Ctrl::$curSpace->allUsersAffected())  ?  Txt::trad("USER_tous_users_affectes")  :  null;
+		$vDatas["usersTotalNb"]=count(Db::getTab($sqlDisplayedUsers));
+		$vDatas["usersTotalNbLabel"]=$vDatas["usersTotalNb"]." ".Txt::trad("USER_users");
+		if(Ctrl::$curUser->isAdminSpace() && Ctrl::$curSpace->allUsersAffected())	{$vDatas["usersTotalNbLabel"]="<span class='abbr' title=\"".Txt::trad("USER_allUsersOnSpace")."\">".$vDatas["usersTotalNbLabel"]."</span>";}
 		$vDatas["menuDisplayUsers"]=(Ctrl::$curUser->isAdminGeneral() && ($_SESSION["displayUsers"]=="all" || count(Ctrl::$curUser->getSpaces())>1)) ? true : false;
-		$vDatas["menuUsersAffectations"]=(self::$curUser->isAdminCurSpace() && self::$curSpace->allUsersAffected()==false) ? true : false;
+		$vDatas["userGroups"]=MdlUserGroup::getGroups(Ctrl::$curSpace);
 		//Affiche la page
 		static::displayPage("VueIndex.php",$vDatas);
 	}
@@ -41,11 +49,10 @@ class CtrlUser extends Ctrl
 			foreach(MdlUser::getPluginObjects($pluginParams) as $tmpObj)
 			{
 				$tmpObj->pluginModule=self::moduleName;
-				$tmpObj->pluginIcon=self::moduleName."/icon.png";
-				$tmpObj->pluginLabel=$tmpObj->display("all");
-				$tmpObj->pluginTitle=$tmpObj->pluginLabel;
-				$tmpObj->pluginJsIcon="lightboxOpen('".$tmpObj->getUrl("vue")."');";
-				$tmpObj->pluginJsLabel=$tmpObj->pluginJsIcon;
+				$tmpObj->pluginIcon="user/accesUser.png";
+				$tmpObj->pluginLabel=$tmpObj->getLabel("all");
+				$tmpObj->pluginTooltip=$tmpObj->pluginLabel;
+				$tmpObj->pluginJsIcon=$tmpObj->pluginJsLabel="lightboxOpen('".$tmpObj->getUrl("vue")."');";//Affiche l'user
 				$pluginsList[]=$tmpObj;
 			}
 			return $pluginsList;
@@ -54,9 +61,9 @@ class CtrlUser extends Ctrl
 	}
 
 	/*
-	 * ACTION : utilisateur détaillé
+	 * ACTION : Vue détaillée d'un utilisateur
 	 */
-	public static function actionUserVue()
+	public static function actionVueUser()
 	{
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlRead();
@@ -73,20 +80,19 @@ class CtrlUser extends Ctrl
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlEdit();
 		//Nb max d'utilisateurs dépassé?
-		if($curObj->isNew() && MdlUser::UsersNbOk()==false)  {static::lightboxClose(false);}
-		////	Formulaire validé
+		if($curObj->isNew() && MdlUser::usersQuotaOk()==false)  {static::lightboxClose();}
+		////	Valide le formulaire
 		if(Req::isParam("formValidate"))
 		{
 			//Enregistre & recharge l'objet
-			$sqlProperties="civility=".Db::formatParam("civility").", name=".Db::formatParam("name").", firstName=".Db::formatParam("firstName").", mail=".Db::formatParam("mail").", telephone=".Db::formatParam("telephone").", telmobile=".Db::formatParam("telmobile").", fax=".Db::formatParam("fax").", website=".Db::formatParam("website").", adress=".Db::formatParam("adress").", postalCode=".Db::formatParam("postalCode").", city=".Db::formatParam("city").", country=".Db::formatParam("country").", skills=".Db::formatParam("skills").", hobbies=".Db::formatParam("hobbies").", function=".Db::formatParam("function").", companyOrganization=".Db::formatParam("companyOrganization").", comment=".Db::formatParam("comment").", connectionSpace=".Db::formatParam("connectionSpace").", lang=".Db::formatParam("lang");
+			$sqlProperties="civility=".Db::formatParam("civility").", name=".Db::formatParam("name").", firstName=".Db::formatParam("firstName").", mail=".Db::formatParam("mail").", telephone=".Db::formatParam("telephone").", telmobile=".Db::formatParam("telmobile").", adress=".Db::formatParam("adress").", postalCode=".Db::formatParam("postalCode").", city=".Db::formatParam("city").", country=".Db::formatParam("country").", function=".Db::formatParam("function").", companyOrganization=".Db::formatParam("companyOrganization").", comment=".Db::formatParam("comment").", connectionSpace=".Db::formatParam("connectionSpace").", lang=".Db::formatParam("lang");
 			if($curObj->editAdminGeneralRight())	{$sqlProperties.=", generalAdmin=".Db::formatParam("generalAdmin");}
 			if(Ctrl::$curUser->isAdminGeneral())	{$sqlProperties.=", calendarDisabled=".Db::formatParam("calendarDisabled");}
-			if(Req::isParam("ipControlAdresses"))	{$sqlProperties.=", ipControlAdresses=".Db::formatTab2txt(Req::getParam("ipControlAdresses"));}
 			$curObj=$curObj->createUpdate($sqlProperties, Req::getParam("login"), Req::getParam("password"));//Ajoute login/password pour les controles standards
 			//Objet bien créé/existant : Affectations / Images / etc
 			if(is_object($curObj))
 			{
-				//Ajoute/supprime l'image
+				//Ajoute/Modifie/Supprime l'image
 				$curObj->editImg();
 				//Affectations aux espaces
 				if(Ctrl::$curUser->isAdminGeneral())
@@ -102,42 +108,32 @@ class CtrlUser extends Ctrl
 					}
 				}
 				//Affectation par défaut à l'espace courant  => si nouvel objet sans affectation définies & affichage "espace" & pour un espace dans lequel tous les users ne sont pas affectés
-				if($curObj->isNew() && Req::isParam("spaceAffect")==false && $_SESSION["displayUsers"]=="space" && self::$curSpace->allUsersAffected()==false)
+				if($curObj->isNewlyCreated() && Req::isParam("spaceAffect")==false && $_SESSION["displayUsers"]=="space" && self::$curSpace->allUsersAffected()==false)
 					{Db::query("INSERT INTO ap_joinSpaceUser SET _idSpace=".Ctrl::$curSpace->_id.", _idUser=".$curObj->_id.", accessRight=1");}
 				//Notification par mail de création d'user
-				if(Req::isParam("notifMail"))	{self::sendMailCoordonnates($curObj,Req::getParam("password"),"userCrea");}
+				if(Req::isParam("notifMail") && Req::isParam("mail"))  {$curObj->newUserCoordsSendMail(Req::getParam("password"));}
 			}
 			//Ferme la page
 			static::lightboxClose();
 		}
-		////	Affiche la vue
-		$vDatas["curObj"]=$curObj;
-		static::displayPage("VueUserEdit.php",$vDatas);
-	}
-
-	/*
-	 * AJAX : Controle du login
-	 */
-	public static function actionControlDuplicateLogin()
-	{
-		$isDuplicate="true";
-		if(Req::isParam(["targetObjId","controledLogin"])){
-			$curObj=Ctrl::getTargetObj();
-			if(Db::getVal("SELECT count(*) FROM ".MdlUser::dbTable." WHERE login=".Db::format(Req::getParam("controledLogin"))." AND _id!=".$curObj->_id)==0)
-				{$isDuplicate="false";}
+		////	Affiche le formulaire
+		else
+		{
+			$vDatas["curObj"]=$curObj;
+			$vDatas["spaceList"]=Db::getObjTab("space","select * from ap_space");//Espaces disponilbes
+			static::displayPage("VueUserEdit.php",$vDatas);
 		}
-		echo $isDuplicate;
 	}
 
 	/*
-	 * ACTION : désaffectation de l'user à un espace
+	 * ACTION : désaffectation d'un user à un espace (ou de plusieurs users : cf. "VueObjMenuSelection" et "targetObjectsAction()")
 	 */
 	public static function actionDeleteFromCurSpace()
 	{
 		$urlRedir=null;
 		foreach(self::getTargetObjects() as $tmpObj){
-			if(empty($urlRedir))	{$urlRedir=$tmpObj->getUrl();}
-			{$tmpObj->deleteFromCurSpace(Ctrl::$curSpace->_id);}
+			if(empty($urlRedir))  {$urlRedir=$tmpObj->getUrl();}
+			$tmpObj->deleteFromCurSpace(Ctrl::$curSpace->_id);
 		}
 		self::redir($urlRedir);
 	}
@@ -150,14 +146,14 @@ class CtrlUser extends Ctrl
 		//Init
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlEdit();
-		////	Formulaire validé
+		////	Valide le formulaire
 		if(Req::isParam("formValidate") && Req::isParam("messengerDisplay"))
 		{
 			//Réinitialise
 			Db::query("DELETE FROM ap_userMessenger WHERE _idUserMessenger=".$curObj->_id);
 			//Affectation à tous OU à certains users?
 			if(Req::getParam("messengerDisplay")=="all")	{Db::query("INSERT INTO ap_userMessenger SET _idUserMessenger=".$curObj->_id.", allUsers=1");}
-			elseif(Req::getParam("messengerDisplay")=="some" && strlen(Req::getParam("messengerSomeUsers"))>0){
+			elseif(Req::getParam("messengerDisplay")=="some" && Req::isParam("messengerSomeUsers")){
 				foreach(Req::getParam("messengerSomeUsers") as $_idUser)	{Db::query("INSERT INTO ap_userMessenger SET _idUserMessenger=".$curObj->_id.", _idUser=".(int)$_idUser);}
 			}
 			//Ferme la page
@@ -175,8 +171,8 @@ class CtrlUser extends Ctrl
 	 */
 	public static function actionEditPersonsImportExport()
 	{
-		////	Nb max d'utilisateurs dépassé?
-		if(MdlUser::UsersNbOk()==false)  {static::lightboxClose(false);}
+		////	Controle du droit d'accès et du nombre max d'utilisateurs
+		if(Ctrl::$curUser->isAdminSpace()==false || MdlUser::usersQuotaOk()==false)  {static::lightboxClose();}
 		////	Validation de formulaire
 		if(Req::isParam("formValidate"))
 		{
@@ -194,29 +190,29 @@ class CtrlUser extends Ctrl
 				{
 					$curObj=new MdlUser();
 					$sqlProperties=null;
-					$tmpUser=array();
+					$tmpUser=[];
 					//Ajoute chaque champ du user
 					foreach(Req::getParam("agoraFields") as $fieldCpt=>$curFieldName){
 						$curFieldVal=(!empty($personFields[$personCpt][$fieldCpt]))  ?  $personFields[$personCpt][$fieldCpt]  :  null;
 						$tmpUser[$curFieldName]=$curFieldVal;
-						if(!empty($curFieldVal) && !empty($curFieldName) && !preg_match("/^(login|pass)/i",$curFieldName))
-							{$sqlProperties.=$curFieldName."=".Db::format($curFieldVal).", ";}
+						if(!empty($curFieldVal) && !empty($curFieldName) && !preg_match("/^(login|pass)/i",$curFieldName))   {$sqlProperties.=$curFieldName."=".Db::format($curFieldVal).", ";}
 					}
 					//Password par défaut?
-					if(empty($tmpUser["password"]))  {$tmpUser["password"]=Txt::idUniq();}
+					if(empty($tmpUser["password"]))  {$tmpUser["password"]=Txt::uniqId(8);}
 					//Login par défaut?
 					if(empty($tmpUser["login"]) && !empty($tmpUser["mail"]))	{$tmpUser["login"]=$tmpUser["mail"];}//mail
-					if(empty($tmpUser["login"]))	{$tmpUser["login"]=strtolower(substr(Txt::clean($tmpUser["firstName"],"maxi",""),0,1)).strtolower(substr(Txt::clean($tmpUser["name"],"maxi",""),0,5));}//"Gérard D'AGOBERT"=>"gdagob"
+					if(empty($tmpUser["login"]))	{$tmpUser["login"]=strtolower(substr(Txt::clean($tmpUser["firstName"],"max",""),0,3)).strtolower(substr(Txt::clean($tmpUser["name"],"max",""),0,8));}//"Gérard D'AGOBERT"=>"gerdagobert"
 					//Enregistre l'user
 					$curObj=$curObj->createUpdate($sqlProperties, $tmpUser["login"], $tmpUser["password"]);//Ajoute login/password pour les controles standards
 					//Options de création
-					if(is_object($curObj)){
+					if(is_object($curObj))
+					{
+						//Envoi une notification mail
+						if(Req::isParam("notifCreaUser"))  {$curObj->newUserCoordsSendMail($tmpUser["password"]);}
 						//Affecte aux espaces si besoin
 						if(Req::isParam("spaceAffectList")){
 							foreach(Req::getParam("spaceAffectList") as $_idSpace)	{Db::query("INSERT INTO ap_joinSpaceUser SET _idSpace=".(int)$_idSpace.", _idUser=".$curObj->_id.", accessRight=1");}
 						}
-						//Envoi une notification mail
-						if(!empty($tmpUser["mail"]) && Req::isParam("notifCreaUser"))	{self::sendMailCoordonnates($curObj,$tmpUser["password"],"userCrea");}
 					}
 				}
 				//Ferme la page
@@ -234,7 +230,7 @@ class CtrlUser extends Ctrl
 	public static function actionAffectUsers()
 	{
 		//Administrateur de l'espace courant?
-		if(Ctrl::$curUser->isAdminCurSpace()==false)	{static::lightboxClose(false);}
+		if(Ctrl::$curUser->isAdminSpace()==false)	{static::lightboxClose();}
 		////	Validation de formulaire
 		if(Req::isParam("formValidate"))
 		{
@@ -259,11 +255,8 @@ class CtrlUser extends Ctrl
 						$vDatas["searchFieldsValues"][$fieldName]=$fieldVal;
 					}
 				}
-				//Liste des users
-				if(!empty($sqlSearch)){
-					$userIds="0,".implode(",",Ctrl::$curSpace->getUsers("ids"));
-					$vDatas["usersList"]=Db::getObjTab("user", "SELECT * FROM ".MdlUser::dbTable." WHERE _id NOT IN (".trim($userIds,",").") AND (".trim($sqlSearch,"OR").")");
-				}
+				//Liste des users toujours pas affectés à l'espace courant
+				if(!empty($sqlSearch))  {$vDatas["usersList"]=Db::getObjTab("user", "SELECT * FROM ".MdlUser::dbTable." WHERE _id NOT IN (".Ctrl::$curSpace->getUsers("idsSql").") AND (".trim($sqlSearch,"OR").")");}
 			}
 		}
 		////	Formulaire
@@ -277,22 +270,11 @@ class CtrlUser extends Ctrl
 	public static function actionSendCoordinates()
 	{
 		////	Admin general uniquement
-		if(Ctrl::$curUser->isAdminGeneral()==false)  {static::lightboxClose(false);}
+		if(Ctrl::$curUser->isAdminGeneral()==false)  {static::lightboxClose();}
 		////	Validation de formulaire
-		if(Req::isParam("formValidate") && Req::isParam("usersList"))
-		{
-			//Réinitialise le password pour chaque user sélectionné
-			foreach(Req::getParam("usersList") as $userId){
-				$curObj=Ctrl::getObj("user",$userId);
-				if(is_object($curObj)){
-					$newPassword=Txt::idUniq();
-					$isSendmail=self::sendMailCoordonnates($curObj,$newPassword,"sendCoords");
-					if($isSendmail==true)	{Db::query("UPDATE ".MdlUser::dbTable." SET password=".Db::format(MdlUser::passwordSha1($newPassword))." WHERE _id=".$curObj->_id);}
-				}
-			}
-			//Notif d'envoi
-			if($isSendmail==true)	{Ctrl::addNotif(Txt::trad("MAIL_envoye"), "success");}
-			//Ferme la page
+		if(Req::isParam("formValidate") && Req::isParam("usersList")){
+			foreach(Req::getParam("usersList") as $userId)  {$isSendmail=Ctrl::getObj("user",$userId)->resetPasswordSendMail();}
+			if($isSendmail==true)  {Ctrl::addNotif(Txt::trad("MAIL_sendOk"),"success");}
 			static::lightboxClose();
 		}
 		////	Affichage du formulaire
@@ -306,37 +288,73 @@ class CtrlUser extends Ctrl
 	public static function actionSendInvitation()
 	{
 		////	Droit d'envoyer des invitations?  Nb max d'utilisateurs dépassé?
-		if(Ctrl::$curUser->sendInvitationRight()==false || MdlUser::UsersNbOk()==false)  {static::lightboxClose(false);}
-		////	Suppression d'invitation
-		if(Req::isParam("deleteInvitation")){
-			Db::query("DELETE FROM ap_invitation WHERE _idUser=".Ctrl::$curUser->_id." AND _idInvitation=".Db::formatParam("_idInvitation"));
-		}
-		////	Validation de formulaire : Envoie une invitation
-		if(Req::isParam("formValidate") && Req::isParam("mail"))
+		if(Ctrl::$curUser->sendInvitationRight()==false || MdlUser::usersQuotaOk()==false)  {static::lightboxClose();}
+		////	Validation du formulaire (Ajax)
+		if(Req::isParam("formValidate"))
 		{
-			// Init
-			$_idInvitation=Txt::idUniq(10);
-			$password=Txt::idUniq();
-			$confirmUrl=Req::getSpaceUrl()."/?ctrl=offline&disconnect=1&_idInvitation=".$_idInvitation."&mail=".urlencode(Req::getParam("mail"));
-			// Envoi du mail d'invitation
-			$subject=Txt::trad("USER_objet_mail_invitation")." ".Ctrl::$curUser->display(); // "Invitation de Jean DUPOND" && "Jean DUPOND vous invite à rejoindre l'espace Mon Espace :"
-			$mainMessage="<b>".Ctrl::$curUser->display()." ".Txt::trad("USER_admin_guest_espace")." ".Ctrl::$curSpace->name." :</b>
-						  <br><br>".Txt::trad("login2")." : <b>".Req::getParam("mail")."</b>
-						  <br>".Txt::trad("passwordToModify")." : <b>".$password."</b>
-						  <br><br><a href=\"".$confirmUrl."\" target=\"_blank\"><u><b>".Txt::trad("USER_confirmer_invitation")."</u></b></a>"; // Confirmer l'invitation ?
-			if(Req::isParam("comment"))  {$mainMessage.="<br><br>".Txt::trad("comment").":<br>".Req::getParam("comment");}
-			$isSendMail=Tool::sendMail(Req::getParam("mail"), $subject, $mainMessage);
-			// On ajoute l'invitation temporaire
-			if($isSendMail==true)	{Db::query("INSERT INTO ap_invitation SET _idInvitation=".Db::format($_idInvitation).", _idSpace=".(int)Ctrl::$curSpace->_id.", name=".Db::formatParam("name").", firstName=".Db::formatParam("firstName").", mail=".Db::formatParam("mail").", password=".Db::format($password).", dateCrea=".Db::dateNow().", _idUser=".Ctrl::$curUser->_id);}
+			$invitList=[];
+			//Contacts du formulaire simple
+			if(Txt::isMail(Req::getParam("mail")))  {$invitList[]=["firstName"=>Req::getParam("firstName"), "name"=>Req::getParam("name"), "mail"=>Req::getParam("mail")];}
+			//Ou contacts importés via gPeople
+			elseif(Req::isParam("gPeopleContacts")){
+				foreach(Req::getParam("gPeopleContacts") as $contactTmp){
+					$contactTmp=explode("@@",$contactTmp);
+					if(Txt::isMail($contactTmp[2]))  {$invitList[]=["firstName"=>$contactTmp[0], "name"=>$contactTmp[1], "mail"=>$contactTmp[2]];}
+				}
+			}
+			//Envoi de chaque invitation
+			if(!empty($invitList))
+			{
+				foreach($invitList as $invitationTmp)
+				{
+					$_idInvitation=Txt::uniqId();
+					$password=Txt::uniqId(8);
+					$confirmUrl=Req::getSpaceUrl()."/?ctrl=offline&disconnect=1&_idInvitation=".$_idInvitation."&mail=".urlencode($invitationTmp["mail"]);
+					//Envoi du mail d'invitation.  "Invitation de Jean DUPOND"  =>  "Jean DUPOND vous invite à rejoindre l'espace Mon Espace..."
+					$subject=Txt::trad("USER_mailInvitationObject")." ".Ctrl::$curUser->getLabel();
+					$mainMessage="<b>".Ctrl::$curUser->getLabel()." ".Txt::trad("USER_mailInvitationFromSpace")." ".Ctrl::$curSpace->name." :</b>
+								  <br><br>".Txt::trad("login")." : <b>".$invitationTmp["mail"]."</b>
+								  <br>".Txt::trad("passwordToModify")." : <b>".$password."</b>
+								  <br><br><a href=\"".$confirmUrl."\" target=\"_blank\"><u><b>".Txt::trad("USER_mailInvitationConfirm")."</u></b></a>"; // Confirmer l'invitation ?
+					if(Req::isParam("comment"))  {$mainMessage.="<br><br>".Txt::trad("comment").":<br>".Req::getParam("comment");}
+					$isSendMail=Tool::sendMail($invitationTmp["mail"], $subject, $mainMessage);
+					//On ajoute l'invitation temporaire
+					if($isSendMail==true)  {Db::query("INSERT INTO ap_invitation SET _idInvitation=".Db::format($_idInvitation).", _idSpace=".(int)Ctrl::$curSpace->_id.", name=".Db::format($invitationTmp["name"]).", firstName=".Db::format($invitationTmp["firstName"]).", mail=".Db::format($invitationTmp["mail"]).", password=".Db::format($password).", dateCrea=".Db::dateNow().", _idUser=".Ctrl::$curUser->_id);}
+				}
+			}
 			//Ferme la page
 			static::lightboxClose();
 		}
-		////	On fait le ménage (suppr les invitations de + d'un an)
-		Db::query("DELETE FROM ap_invitation WHERE UNIX_TIMESTAMP(dateCrea) < '".(time()-(86400*365))."'");
-		////	Formulaire
-		$vDatas["userFields"]=array("name","firstName","mail");
-		$vDatas["invitationList"]=Db::getTab("SELECT * FROM ap_invitation WHERE _idUser=".Ctrl::$curUser->_id);
-		static::displayPage("VueSendInvitation.php",$vDatas);
+		////	Affiche le formulaire
+		else
+		{
+			//Supprime les invitations non confirmées depuis 6 mois  &&  Supprime au besoin une invitation spécifique
+			Db::query("DELETE FROM ap_invitation WHERE UNIX_TIMESTAMP(dateCrea) < '".(time()-(86400*180))."'");
+			if(Req::isParam("deleteInvitation"))  {Db::query("DELETE FROM ap_invitation WHERE _idUser=".Ctrl::$curUser->_id." AND _idInvitation=".Db::formatParam("_idInvitation"));}
+			//Affiche le formulaire
+			$vDatas["userFields"]=array("name","firstName","mail");
+			$vDatas["invitationList"]=Db::getTab("SELECT * FROM ap_invitation WHERE _idUser=".Ctrl::$curUser->_id);
+			static::displayPage("VueSendInvitation.php",$vDatas);
+		}
+	}
+
+	/*
+	 * AJAX : Vérifie la présence d'un compte user OU de plusieurs comptes users (cf "vueSendInvitation.php">"gPeopleGetContacts()")
+	 */
+	public static function actionLoginAlreadyExist()
+	{
+		//Vérif un seul compte user
+		if(Req::isParam("mail") && MdlUser::loginAlreadyExist(Req::getParam("mail"),Req::getParam("_idUserIgnore")))  {echo "true";}
+		//Vérif plusieurs comptes user
+		elseif(Req::isParam("mailList"))
+		{
+			$result["mailListPresent"]=[];
+			foreach(Req::getParam("mailList") as $tmpMail){
+				if(MdlUser::loginAlreadyExist($tmpMail))  {$result["mailListPresent"][]=$tmpMail;}
+			}
+			//Renvoi le résultat
+			echo json_encode($result);
+		}
 	}
 
 	/*
@@ -345,7 +363,7 @@ class CtrlUser extends Ctrl
 	public static function actionUserGroupEdit()
 	{
 		//Droit d'ajouter un groupe?
-		if(MdlUserGroup::addRight()==false)  {static::lightboxClose(false);}
+		if(MdlUserGroup::addRight()==false)  {static::lightboxClose();}
 		////	Validation de formulaire : edit un groupe
 		if(Req::isParam("formValidate")){
 			$curObj=Ctrl::getTargetObj();
@@ -356,12 +374,12 @@ class CtrlUser extends Ctrl
 		//Users et groupes de l'espace
 		$vDatas["usersList"]=Ctrl::$curSpace->getUsers();
 		$vDatas["groupList"]=MdlUserGroup::getGroups(Ctrl::$curSpace);
-		$vDatas["groupList"][]=New MdlUserGroup();
+		$vDatas["groupList"][]=new MdlUserGroup();
 		foreach($vDatas["groupList"] as $tmpKey=>$tmpGroup){
 			if($tmpGroup->editRight()==false)	{unset($vDatas["groupList"][$tmpKey]);}
 			else{
 				$tmpGroup->tmpId=$tmpGroup->_targetObjId;
-				$tmpGroup->createdBy=($tmpGroup->isNew()==false)  ?  Txt::trad("cree_par")." : ".Ctrl::getObj("user",$tmpGroup->_idUser)->display()  :  null;
+				$tmpGroup->createdBy=($tmpGroup->isNew()==false)  ?  Txt::trad("creation")." : ".$tmpGroup->displayAutor()  :  null;
 			}
 		}
 		//Affiche la page
@@ -369,29 +387,29 @@ class CtrlUser extends Ctrl
 	}
 
 	/*
-	 * ACTION : Affiche l'inscription des utilisateurs au site 
+	 * ACTION : Inscription des utilisateurs au site
 	 */
-	public static function actionRegisterUser()
+	public static function actionUserInscriptionValidate()
 	{
-		//Administrateur de l'espace courant?
-		if(Ctrl::$curUser->isAdminCurSpace()==false)	{static::lightboxClose(false);}
+		//Administrateur de l'espace courant?  Nb max d'utilisateurs dépassé?
+		if(Ctrl::$curUser->isAdminSpace()==false || MdlUser::usersQuotaOk()==false)	{static::lightboxClose();}
 		//Validation du form
-		if(Req::isParam("formValidate") && Req::isParam("inscriptionValidation"))
+		if(Req::isParam("formValidate") && Req::isParam("inscriptionValidate"))
 		{
 			//Créé chaque utilisateur validé
-			foreach(Req::getParam("inscriptionValidation") as $idInscription)
+			foreach(Req::getParam("inscriptionValidate") as $idInscription)
 			{
 				$tmpInscription=Db::getLine("SELECT * FROM ap_userInscription WHERE _id=".$idInscription);
 				//Invalidation/Validation de l'user
-				if(Req::getParam("submitAction")=="alternative"){
-					$subject=$mainMessage=Txt::trad("usersInscription_invalider_mail")." ''".Ctrl::$agora->name."'' (".Req::getSpaceUrl(false).")";//"Votre compte n'a pas été validé sur ''Mon_Espace''"
+				if(Req::isParam("submitInvalidate")){
+					$subject=$mainMessage=Txt::trad("userInscriptionInvalidateMail")." ''".Ctrl::$agora->name."'' (".Req::getSpaceUrl(false).")";//"Votre compte n'a pas été validé sur ''Mon_Espace''"
 					$mainMessage="<b>".$mainMessage."</b>";
 					Tool::sendMail($tmpInscription["mail"], $subject, $mainMessage);
 				}else{
 					$curObj=new MdlUser();
 					$sqlProperties="name=".Db::format($tmpInscription["name"]).", firstName=".Db::format($tmpInscription["firstName"]).", mail=".Db::format($tmpInscription["mail"]);
 					$curObj=$curObj->createUpdate($sqlProperties, $tmpInscription["mail"], $tmpInscription["password"], $tmpInscription["_idSpace"]);//Ajoute login/password pour les controles standards
-					if(is_object($curObj))  {self::sendMailCoordonnates($curObj,$tmpInscription["password"],"userCrea");}
+					$curObj->newUserCoordsSendMail($tmpInscription["password"]);
 				}
 				//Supprime l'inscription
 				Db::query("DELETE FROM ap_userInscription WHERE _id=".(int)$idInscription);
@@ -401,31 +419,6 @@ class CtrlUser extends Ctrl
 		}
 		//Affiche le formulaire
 		$vDatas["inscriptionList"]=Db::getTab("SELECT * FROM ap_userInscription WHERE _idSpace=".Ctrl::$curSpace->_id);
-		static::displayPage("VueUsersInscriptionValidate.php",$vDatas);
-	}
-
-	/*
-	 * ENVOI D'UN MAIL AVEC LES COORDONNEES D'UN USER
-	 */
-	public static function sendMailCoordonnates($curObj, $password, $mode)
-	{
-		//Init
-		$spaceUrl=Req::getSpaceUrl()."/?login=".$curObj->login."&disconnect=1";
-		$spaceNameUrl="<a href=\"".$spaceUrl."\" target='_blank'><u><i>".Ctrl::$agora->name."</i></u></a> (".Req::getSpaceUrl(false).")";
-		$message="<a href=\"".$spaceUrl."\" target='_blank'>".Txt::trad("USER_mail_infos_connexion")."</a> :";
-		if($mode=="sendCoords"){
-			$subject=Txt::trad("USER_mail_coordonnees")." ''".Ctrl::$agora->name."''";
-			$message=Txt::trad("USER_mail_coordonnees")." ".$spaceNameUrl."<br>".$message;
-		}else{
-			$subject=Txt::trad("USER_mail_objet_nouvel_utilisateur")." ''".Ctrl::$agora->name."''";
-			$message=Txt::trad("USER_mail_nouvel_utilisateur")." ".$spaceNameUrl."<br>".$message;
-		}
-		//Message
-		$message.= "<br><br>".Txt::trad("login2")." : <b>".$curObj->login."</b>
-					<br>".Txt::trad("passwordToModify")." : <b>".$password."</b>
-					<br><br>".Txt::trad("USER_mail_infos_connexion2");
-		//Envoi du message
-		$options=($mode=="sendCoords") ? "noSendNotif" : null;
-		return Tool::sendMail($curObj->mail, $subject, $message, $options);
+		static::displayPage("VueUserInscriptionValidate.php",$vDatas);
 	}
 }

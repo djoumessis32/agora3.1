@@ -1,4 +1,12 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Controleur du module "Link"
  */
@@ -6,7 +14,7 @@ class CtrlLink extends Ctrl
 {
 	const moduleName="link";
 	public static $folderObjectType="linkFolder";
-	public static $moduleOptions=["AdminRootFolderAddContent"];
+	public static $moduleOptions=["adminRootAddContent"];
 	public static $MdlObjects=array("MdlLink","MdlLinkFolder");
 
 	/*
@@ -14,9 +22,8 @@ class CtrlLink extends Ctrl
 	 */
 	public static function actionDefault()
 	{
-		static::$isMainPage=true;
-		$vDatas["foldersList"]=self::$curContainer->foldersList();
-		$vDatas["linkList"]=Db::getObjTab("link", "SELECT * FROM ap_link WHERE ".MdlLink::sqlDisplayedObjects(self::$curContainer)." ".MdlLink::sqlSort(self::$curContainer));
+		$vDatas["foldersList"]=self::$curContainer->folders();
+		$vDatas["linkList"]=Db::getObjTab("link", "SELECT * FROM ap_link WHERE ".MdlLink::sqlDisplayedObjects(self::$curContainer)." ".MdlLink::sqlSort());
 		static::displayPage("VueIndex.php",$vDatas);
 	}
 
@@ -25,15 +32,14 @@ class CtrlLink extends Ctrl
 	 */
 	public static function plugin($pluginParams)
 	{
-		$pluginParams=array_merge($pluginParams,array("MdlObjectFolder"=>"MdlLinkFolder"));
-		$pluginsList=self::getPluginsFolders($pluginParams);
+		$pluginsList=self::getPluginsFolders($pluginParams,"MdlLinkFolder");
 		foreach(MdlLink::getPluginObjects($pluginParams) as $tmpObj)
 		{
 			$tmpObj->pluginModule=self::moduleName;
 			$tmpObj->pluginIcon=self::moduleName."/icon.png";
-			$tmpObj->pluginLabel=(!empty($tmpObj->description)) ? Txt::reduce($tmpObj->description) : $tmpObj->adress;
-			$tmpObj->pluginTitle=$tmpObj->containerObj()->folderPath("text")."<br>".$tmpObj->displayAutor(true,true);
-			$tmpObj->pluginJsIcon="redir('".$tmpObj->getUrl("container")."',true);";
+			$tmpObj->pluginLabel=(!empty($tmpObj->description))  ?  $tmpObj->description  :  $tmpObj->adress;
+			$tmpObj->pluginTooltip=$tmpObj->containerObj()->folderPath("text");
+			$tmpObj->pluginJsIcon="windowParent.redir('".$tmpObj->getUrl("container")."');";//Redir vers le dossier conteneur
 			$tmpObj->pluginJsLabel="window.open('".addslashes($tmpObj->adress)."');";
 			$pluginsList[]=$tmpObj;
 		}
@@ -48,12 +54,12 @@ class CtrlLink extends Ctrl
 		//Init
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlEdit();
-		////	Formulaire validé
+		////	Valide le formulaire
 		if(Req::isParam("formValidate")){
 			//Enregistre & recharge l'objet
 			$curObj=$curObj->createUpdate("adress=".Db::formatParam("adress").", description=".Db::formatParam("description"));
 			//Notifie par mail & Ferme la page
-			$curObj->sendMailNotif("<a href=\"".$curObj->adress."\" target='_blank'>".$curObj->adress."</a><br>".$curObj->description);
+			$curObj->sendMailNotif("<a href=\"".$curObj->adress."\" target='_blank'><b>".$curObj->adress."</b></a>");
 			static::lightboxClose();
 		}
 		////	Affiche la vue

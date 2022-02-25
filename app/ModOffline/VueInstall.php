@@ -1,98 +1,102 @@
 <script src="app/js/jstz.min.js"></script>
-<script type="text/javascript">
-////	Init la page
+<script>
+////	INIT
 $(function(){
-	//Init le timezone avec "jstz"
+	////	Init le timezone avec "jstz"
 	var curTimezone=$("[data-tzName='"+jstz.determine().name()+"']").val();
 	$("[name='timezone']").val(curTimezone);
-});
 
-////	CONTROLE LE FORM
-function formControl()
-{
-	////	Vérifie que tous les champs sont remplis (sauf password, qui peut être vide)
-	emptyFields=true;
-	$("input,select,textarea").not("[name='db_password']").each(function(){
-		if($(this).isEmpty()){
-			$(this).css("box-shadow","2px 2px 6px #955");
-			if(emptyFields==true)  {$(this).focus();}
-			emptyFields=false;
+	////	Si "adminLogin" est un email : on l'ajoute à "adminMail"
+	$("input[name='adminLogin']").on("keyup change",function(){
+		if($(this).isMail())  {$("input[name='adminMail']").val($(this).val());}
+	});
+
+	////	Validation du formulaire
+	$("form").submit(function(event){
+		//Pas de validation par défaut du formulaire
+		event.preventDefault();
+		//Vérifie que tous les champs sont remplis (sauf password, qui peut être vide)
+		$("input,select,textarea").not("[name='db_password']").each(function(){
+			if($(this).isEmpty())   {$(this).focusRed();  notify("<?= Txt::trad("fillAllFields") ?>","warning");  return false;}
+		});
+		//Vérif que le nom de la base de données est bien formaté
+		if(/^[a-z0-9-_]+$/i.test($("[name='db_name']").val())==false)   {$("[name='db_name']").focusRed();  notify("<?= Txt::trad("INSTALL_dbErrorDbName") ?>","warning");  return false;}
+		//Controle le mail &  password
+		if($("[name='adminMail']").isMail()==false)   {notify("<?= Txt::trad("mailInvalid"); ?>","warning");  return false;}
+		if(isValidPassword($("[name='adminPassword']").val())==false)					{notify("<?= Txt::trad("passwordInvalid") ?>","warning");	return false;}
+		if($("[name='adminPassword']").val()!=$("[name='adminPasswordVerif']").val())	{notify("<?= Txt::trad("passwordConfirmError"); ?>","warning");  return false;}
+		//Installe confirmé : Poste le formulaire via Ajax (avec image "Loading.."), Puis affiche le retour
+		if(confirm("<?= Txt::trad("INSTALL_confirmInstall") ?>")){
+			$("#imgLoading").show();
+			$.ajax({url:"index.php",data:$(this).serialize(),dataType:"json"}).done(function(result){
+				if(result.notifError)			{notify(result.notifError,"warning");  $("#imgLoading").hide();}//Affiche un message d'erreur (de Db?) et masque le "loading"
+				else if(result.redirSuccess)	{setTimeout(function(){ redir(result.redirSuccess); },2000);}	//Sinon l'install s'est bien déroulé : redirection avec timeout (le temps que le "config.inc.php" soit bien enregistré)
+			});
 		}
 	});
-	if(emptyFields==false)	{displayNotif("<?= Txt::trad("remplir_tous_champs") ?>");  return false;}
-	////	Vérifie la connexion à Mysql
-	var ajaxUrl="?ctrl=offline&action=InstallVerifMysql&db_host="+$("[name='db_host']").val()+"&db_login="+$("[name='db_login']").val()+"&db_password="+$("[name='db_password']").val()+"&db_name="+$("[name='db_name']").val();
-	var ajaxResult=$.ajax({url:ajaxUrl,async:false}).responseText;//Attend la réponse Ajax pour passer à la suite (async:false)
-	if(find("errorConnectSGBD",ajaxResult))					{displayNotif("<?= Txt::trad("INSTALL_errorConnectSGBD"); ?>");  return false;}
-	else if(find("errorConnectIdentification",ajaxResult))	{displayNotif("<?= Txt::trad("INSTALL_errorConnectIdentification"); ?>");  return false;}
-	else if(find("errorAppliInstalled",ajaxResult))			{displayNotif("<?= Txt::trad("INSTALL_errorAppliInstalled"); ?>");  return false;}
-	else if(find("errorConnectDb",ajaxResult) && confirm("<?= Txt::trad("INSTALL_errorConnectDbConfirmInstall"); ?>")==false)	{return false;}
-	////	Controle le mail &  password
-	if(isMail($("[name='adminMail']").val())==false)	{displayNotif("<?= Txt::trad("mail_pas_valide"); ?>");  return false;}
-	if($("[name='adminPassword']").val()!=$("[name='adminPasswordVerif']").val())	{displayNotif("<?= Txt::trad("passwordVerifError"); ?>");  return false;}
-	////	Confirme l'install
-	if(!confirm("<?= Txt::trad("INSTALL_confirm_install") ?>"))  {return false;}
-}
+});
 </script>
 
 <style>
-.pageCenter			{padding-top:20px; padding-bottom:30px;}
-.pageCenterContent	{width:600px; padding:10px; margin-top:50px;}
-form				{margin-top:40px;}
-.vHeader			{margin-bottom:30px;}
-[src*='logo.png']	{float:right; max-height:50px;}
-h3					{margin-top:20px; font-style:italic;}
-#spaceDiskLimit		{width:40px;}
-.vSubmitButton		{text-align:center; margin-top:30px;}
+#pageCenter						{padding-top:20px; padding-bottom:30px;}
+#pageCenterContent				{width:600px; padding:10px; margin-top:50px;}
+form							{margin-top:40px;}
+.vHeader						{margin-bottom:40px;}
+.vHeader img[src*='logo']		{float:right;}
+h3								{margin-top:20px; font-style:italic;}
+#spaceDiskLimit					{width:40px;}
+.vSubmitButton					{text-align:center; margin-top:30px;}
+#imgLoading						{display:none; float:right;}
 </style>
 
-<div class="pageCenter">
+<div id="pageCenter">
 	<!--CONTROLE L'ACCESS AU DOSSIER DATAS-->
 	<?php if(!is_writable(PATH_DATAS)){ ?>
-		<h3><img src="app/img/important.png"> <?= Txt::trad("MSG_NOTIF_chmod_DATAS") ?></h3>
+		<h3><img src="app/img/important.png"> <?= Txt::trad("NOTIF_chmodDATAS") ?></h3>
 	<!--FORMULAIRE D'INSTALL-->
 	<?php }else{ ?>
-	<form action="index.php" method="post" onsubmit="return formControl()" enctype="multipart/form-data" class="pageCenterContent sBlock">
+	<form id="pageCenterContent" class="miscContainer noConfirmClose" enctype="multipart/form-data">
 		<!--HEADER-->
-		<div class="vHeader"><img src="app/img/offline/install.png"><img src="app/img/logoMainW.png"><img src="app/img/logo.png"></div>
+		<div class="vHeader"><img src="app/img/install.png"><img src="app/img/logoLabel.png"></div>
 		<!--LANGUE-->
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("USER_langs") ?></div><div class="fieldValue"><?= Txt::menuTrad("install",Req::getParam("tradInstall")) ?></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("USER_langs") ?></div><div><?= Txt::menuTrad("install",Req::getParam("curTrad")) ?></div></div>
 		<!--CONFIG DB-->
-		<h3><?= Txt::trad("INSTALL_connexion_bdd") ?></h3>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("INSTALL_db_host") ?></div><div class="fieldValue"><input type="text" name="db_host"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("INSTALL_db_name") ?></div><div class="fieldValue"><input type="text" name="db_name"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("INSTALL_db_login") ?></div><div class="fieldValue"><input type="text" name="db_login"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("password") ?></div><div class="fieldValue"><input type="password" name="db_password"></div></div>
+		<h3><?= Txt::trad("INSTALL_dbConnect") ?></h3>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("INSTALL_dbHost") ?></div><div><input type="text" name="db_host"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("INSTALL_dbName") ?></div><div><input type="text" name="db_name"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("INSTALL_dbLogin") ?></div><div><input type="text" name="db_login"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("password") ?></div><div><input type="password" name="db_password"></div></div>
 		<!--ADMIN GENERAL DE L'ESPACE-->
-		<h3><?= Txt::trad("INSTALL_config_admin") ?></h3>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("name") ?></div><div class="fieldValue"><input type="text" name="adminName"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("firstName") ?></div><div class="fieldValue"><input type="text" name="adminFirstName"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("login2") ?></div><div class="fieldValue"><input type="text" name="adminLogin"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("password") ?></div><div class="fieldValue"><input type="password" name="adminPassword"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("passwordVerif") ?></div><div class="fieldValue"><input type="password" name="adminPasswordVerif"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("mail") ?></div><div class="fieldValue"><input type="text" name="adminMail"></div></div>
+		<h3><?= Txt::trad("INSTALL_adminAgora") ?></h3>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("name") ?></div><div><input type="text" name="adminName"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("firstName") ?></div><div><input type="text" name="adminFirstName"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("login") ?></div><div><input type="text" name="adminLogin"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("password") ?></div><div><input type="password" name="adminPassword"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("passwordVerif") ?></div><div><input type="password" name="adminPasswordVerif"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("mail") ?></div><div><input type="text" name="adminMail"></div></div>
 		<!--PARAMETRAGE GENERAL DE L'ESPACE-->
-		<h3><?= Txt::trad("AGORA_description_module") ?></h3>
+		<h3><?= Txt::trad("AGORA_generalSettings") ?></h3>
 		<div class="objField">
 			<div class="fieldLabel"><?= Txt::trad("AGORA_timezone") ?></div>
-			<div class="fieldValue">
+			<div>
 				<select name="timezone">
 					<?php foreach(Tool::$tabTimezones as $tzName=>$timezone)  {echo "<option value=\"".$timezone."\" data-tzName='".$tzName."'>[GMT ".($timezone>0?"+":"").$timezone."] ".$tzName."</option>";}?>
 				</select>
 			</div>
 		</div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("AGORA_limite_espace_disque") ?></div><div class="fieldValue"><input type="text" name="spaceDiskLimit" value="10" id="spaceDiskLimit"> <?= Txt::trad("giga_octet") ?></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("AGORA_spaceName") ?></div><div class="fieldValue"><input type="text" name="spaceName"></div></div>
-		<div class="objField"><div class="fieldLabel"><?= Txt::trad("description") ?></div><div class="fieldValue"><textarea name="spaceDescription"></textarea></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("AGORA_diskSpaceLimit") ?></div><div><input type="text" name="spaceDiskLimit" value="10" id="spaceDiskLimit"> <?= Txt::trad("gigaOctet") ?></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("AGORA_spaceName") ?></div><div><input type="text" name="spaceName"></div></div>
+		<div class="objField"><div class="fieldLabel"><?= Txt::trad("description") ?></div><div><textarea name="spaceDescription"></textarea></div></div>
 		<div class="objField">
-			<div class="fieldLabel"><?= Txt::trad("SPACE_espace_public") ?></div>
+			<div class="fieldLabel"><?= Txt::trad("SPACE_publicSpace") ?></div>
 			<select name="spacePublic">
-				<option value="0"><?= Txt::trad("non") ?></option>
-				<option value="1"><?= Txt::trad("oui") ?></option>
+				<option value="0"><?= Txt::trad("no") ?></option>
+				<option value="1"><?= Txt::trad("yes") ?></option>
 			</select>
 		</div>
 		<!--VALIDATION-->
-		<?= Txt::formValidate() ?>
+		<?= Txt::submitButton() ?>
+		<img src="app/img/loading.gif" id="imgLoading">
 	</form>
 	<?php } ?>
 </div>

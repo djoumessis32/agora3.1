@@ -1,22 +1,46 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Modele des personnes : utilisateurs & contacts
  */
 class MdlPerson extends MdlObject
 {
-	//Propriétés de base
-	const isSelectable=true;
-	//Champs obligatoires, de recherche et de tri des résultats
 	public static $displayModeOptions=array("block","line");
 	public static $requiredFields=array("name","firstName","login");
-	public static $searchFields=array("name","firstName","adress","postalCode","city","country","skills","hobbies","function","companyOrganization","comment");
-	//Formats .csv  (champ agora=>champ specifique)
+	public static $searchFields=array("name","firstName","companyOrganization","function","adress","postalCode","city","country","telephone","telmobile","mail","comment");
+	//Valeurs en cache
+	private $_hasImg=null;
+	private $_personLabel=null;
+	//Formats .csv  ("fieldKeys" : "nom du champ bdd agora"=>"nom du champ d'export csv")
 	public static $csvFormats=array(
 		//AGORA
 		"csv_agora"=>array(
 			"delimiter"=>";",
 			"enclosure"=>'"',
-			"fieldKeys"=>array("civility","name","firstName","companyOrganization","function","adress","postalCode","city","country","telephone","telmobile","fax","mail","website","skills","hobbies","comment","login","password")
+			"fieldKeys"=>array(
+				"civility"=>"civility",
+				"name"=>"name",
+				"firstName"=>"firstName",
+				"companyOrganization"=>"companyOrganization",
+				"function"=>"function",
+				"adress"=>"adress",
+				"postalCode"=>"postalCode",
+				"city"=>"city",
+				"country"=>"country",
+				"telephone"=>"telephone",
+				"telmobile"=>"telmobile",
+				"mail"=>"mail",
+				"comment"=>"comment",
+				"login"=>"login",
+				"password"=>"password"
+			)
 		),
 		//GMAIL
 		"csv_gmail"=>array(
@@ -26,9 +50,7 @@ class MdlPerson extends MdlObject
 				"firstName"=>"Given Name",
 				"name"=>"Family Name",
 				"mail"=>"E-mail 1 - Value",
-				"fax"=>"Fax",
 				"telmobile"=>"Phone 1 - Value",
-				"website"=>"Site Web",
 				"function"=>"Fonction",
 				"companyOrganization"=>"Société",
 				"adress"=>"Address 1 - Street",
@@ -52,12 +74,10 @@ class MdlPerson extends MdlObject
 				"city"=>"Ville (domicile)",
 				"adress"=>"Code postal (domicile)",
 				"country"=>"Pays (domicile)",
-				"fax"=>"Fax (domicile)",
 				"telephone"=>"Téléphone (domicile)",
 				"telmobile"=>"Tél. mobile",
 				"mail"=>"Adresse mail",
-				"comment"=>"Notes",
-				"website"=>"Page Web"
+				"comment"=>"Notes"
 			)
 		),
 		//HOTMAIL
@@ -76,13 +96,10 @@ class MdlPerson extends MdlObject
 				"city"=>"Home City",
 				"postalCode"=>"Home Postal Code",
 				"country"=>"Home Country",
-				"fax"=>"Home Fax",
 				"telephone"=>"Home Phone",
 				"telmobile"=>"Mobile Phone",
 				"mail"=>"E-mail Address",
-				"hobbies"=>"Hobby",
-				"comment"=>"Notes",
-				"website"=>"Web Page"
+				"comment"=>"Notes"
 			)
 		),
 		//THUNDERBIRD
@@ -94,7 +111,6 @@ class MdlPerson extends MdlObject
 					"name"=>"Nom de famille",
 					"mail"=>"Première adresse électronique",
 					"telephone"=>"Tél. personnel",
-					"fax"=>"Fax",
 					"telmobile"=>"Portable",
 					"adress"=>"Adresse privée",
 					"city"=>"Ville",
@@ -102,7 +118,6 @@ class MdlPerson extends MdlObject
 					"postalCode"=>"Code postal",
 					"function"=>"Profession",
 					"companyOrganization"=>"Société",
-					"website"=>"Page Web 1",
 					"comment"=>"Notes"
 			)
 		)
@@ -123,17 +138,19 @@ class MdlPerson extends MdlObject
 	}
 
 	/*
-	 * Affiche le nom/prénom  (ex "auteur()")
-	 * $display : firstNameAndName / all / firstName
+	 * SURCHARGE : Affiche le "Prénom NOM" de l'utilisateur ou contact
 	 */
-	public function display($display="firstNameAndName")
+	public function getLabel($labelType=null)
 	{
-		if(!empty($this->firstName) || !empty($this->name)){
-			if($display=="firstName" && !empty($this->firstName))	{return $this->firstName;}
-			elseif($display=="all")									{return $this->civility." ".$this->firstName." ".$this->name;}
-			else													{return $this->firstName." ".$this->name;}
+		//Label par défaut en cache
+		if($this->_personLabel===null){
+			if(empty($this->firstName) && empty($this->name))	{$this->_personLabel="<i>".Txt::trad("unknown")."</i>";}//"Personne inconnue"
+			else												{$this->_personLabel=$this->firstName." ".$this->name;} //Exple : Bobby SMITH
 		}
-		elseif($this->_id>0)	{return "<i>".Txt::trad("inconnu")."</i>";}
+		//Renvoie le label par défaut ou un label spécifique
+		if($labelType==null)										{return $this->_personLabel;}									//$labelType par défaut (Exple: Bobby SMITH)
+		elseif($labelType=="firstName" && !empty($this->firstName))	{return $this->firstName;}										//$labelType "firstName", pour le messenger ou autre (Exple: Bobby)
+		else														{return $this->civility." ".$this->firstName." ".$this->name;}	//$labelType "full", pour le profil utilisateur ou autre (Exple: Mr Bobby SMITH)
 	}
 
 	/*
@@ -148,74 +165,102 @@ class MdlPerson extends MdlObject
 	 * Affiche les infos sur la personne
 	 * $displayMode : block / line / profile / edit
 	 */
-	public function getFields($displayMode)
+	public function getFieldsValues($displayMode)
 	{
-		$details=null;
+		$labels=null;
 		//Affichage en page principale (display block/line)
 		if($displayMode=="block" || $displayMode=="line")
 		{
-			$details.=	$this->getField("companyOrganization",$displayMode).
-						$this->getField("function",$displayMode).
-						$this->getField("mail",$displayMode).
-						$this->getField("fullAdress",$displayMode);
+			$labels.=	$this->getFieldValue("companyOrganization",$displayMode).
+						$this->getFieldValue("function",$displayMode).
+						$this->getFieldValue("mail",$displayMode).
+						$this->getFieldValue("telephone",$displayMode).
+						$this->getFieldValue("telmobile",$displayMode).
+						$this->getFieldValue("fullAdress",$displayMode);
 		}
 		//Affichage du profil (vue / édition)
 		elseif($displayMode=="profile" || $displayMode=="edit")
 		{
-			if($displayMode=="edit")	{$details.=$this->getField("civility",$displayMode).$this->getField("name",$displayMode).$this->getField("firstName",$displayMode)."<hr class='hrGradient'>";}
-			$details.=	$this->getField("mail",$displayMode).
-						$this->getField("telmobile",$displayMode).
-						$this->getField("telephone",$displayMode).
-						$this->getField("fax",$displayMode).
-						$this->getField("website",$displayMode).
-						($displayMode=="edit"?"<hr class='hrGradient'>":null).
-						$this->getField("adress",$displayMode).
-						$this->getField("postalCode",$displayMode).
-						$this->getField("city",$displayMode).
-						$this->getField("country",$displayMode).
-						($displayMode=="edit"?"<hr class='hrGradient'>":null).
-						$this->getField("skills",$displayMode).
-						$this->getField("hobbies",$displayMode).
-						$this->getField("function",$displayMode).
-						$this->getField("companyOrganization",$displayMode).
-						$this->getField("comment",$displayMode);
+			if($displayMode=="edit")	{$labels.=$this->getFieldValue("civility",$displayMode).$this->getFieldValue("name",$displayMode).$this->getFieldValue("firstName",$displayMode)."<hr>";}
+			$labels.=	$this->getFieldValue("mail",$displayMode).
+						$this->getFieldValue("telmobile",$displayMode).
+						$this->getFieldValue("telephone",$displayMode).
+						($displayMode=="edit"?"<hr>":null).
+						$this->getFieldValue("adress",$displayMode).
+						$this->getFieldValue("postalCode",$displayMode).
+						$this->getFieldValue("city",$displayMode).
+						$this->getFieldValue("country",$displayMode).
+						($displayMode=="edit"?"<hr>":null).
+						$this->getFieldValue("function",$displayMode).
+						$this->getFieldValue("companyOrganization",$displayMode).
+						$this->getFieldValue("comment",$displayMode);
 		}
-		return ($displayMode=="line")  ?  substr($details,0,strrpos($details,"<img src='app/img/separator.png'>"))  :  $details;//Si besoin, enleve le dernier séparateur (mais pas de "trim()"!)
+		//Ajoute la date de dernire connexion
+		if(static::objectType=="user" && Ctrl::$curUser->isAdminSpace() && $displayMode!="edit")  {$labels.=$this->getFieldValue("lastConnection",$displayMode);}
+		//Si besoin, enleve le dernier séparateur (pas de "trim()" car pas fiable dans ce cas)
+		if($displayMode=="line")	{$labels=substr($labels,0,strrpos($labels,"<img src='app/img/separator.png'>"));}
+		//Renvoi le résultat
+		return $labels;
 	}
 
 	/*
 	 * Affiche une info sur la personne
+	 * $displayMode : "block", "line", "profile", "edit"
 	 */
-	public function getField($field, $displayMode)
+	public function getFieldValue($fieldName, $displayMode)
 	{
-		$detail=null;
-		//Adresse complete (avec carte) / Adresse web /Champ unique
-		if($field=="fullAdress" && $this->hasAdress())								{$detail="<a href=\"javascript:lightboxOpen('?ctrl=misc&action=PersonsMap&targetObjects[".static::objectType."]=".$this->_id."');\" title=\"".Txt::trad("localiser_carte")."\">".$this->adress." ".$this->postalCode." ".$this->city." <img src='app/img/map.png'></a>";}
-		elseif($field=="website" && !empty($this->$field) && $displayMode!="edit")	{$detail="<a href=\"".(!strstr($this->$field,"://")?"http://":null).$this->$field."\" target='_blank'>".$this->$field."</a>";}
-		else																		{$detail=$this->$field;}
-		//"Habille" le champ en fonction du Type d'affichage
-		if(!empty($detail) || $displayMode=="edit")
-		{
-			if($displayMode=="block")		{return "<div class='personDetail'>".$detail."</div>";}
-			elseif($displayMode=="line")	{return "<div class='personDetail'>".$detail."</div> &nbsp;<img src='app/img/separator.png'>&nbsp; ";}
-			elseif($displayMode=="profile" || $displayMode=="edit"){
-				if($displayMode=="edit")	{$detail=($field=="comment")  ?  "<textarea name='".$field."'>".strip_tags($detail)."</textarea>"  :  "<input type='text' name='".$field."' value=\"".strip_tags($detail)."\">";}
-				return "<div class='objField'><div class='fieldLabel'><img src='app/img/person/".$field.".png'> ".Txt::trad($field)."</div><div class='fieldValue'>".$detail."</div></div>";
-			}
+		//Valeur du champ
+		$fieldValue=$this->$fieldName;
+		//Habillage du champ en mode "Edit" ||  Habillage de certains champs spécifiques
+		if($displayMode=="edit"){
+			if($fieldName=="comment")	{$fieldValue="<textarea name='".$fieldName."'>".strip_tags($fieldValue)."</textarea>";}
+			else						{$fieldValue="<input type='text' name='".$fieldName."' value=\"".strip_tags($fieldValue)."\">";}
+		}
+		//Mail : redirige vers le module mail (ou à défaut, l'outil de messagerie). "parent" pour rediriger aussi depuis un lightbox..
+		elseif($fieldName=="mail" && !empty($fieldValue)){
+			$mailtoUrl=(Ctrl::$curSpace->moduleEnabled("mail"))  ?  "javascript:windowParent.redir('?ctrl=mail&checkedMailto=".$this->$fieldName."');"  :  "mailto:".$this->$fieldName;
+			$fieldValue="<a href=\"".$mailtoUrl."\" title=\"".Txt::trad("sendMail")."\">".$this->$fieldName." <img src='app/img/person/mail.png'></a>";
+		}
+		elseif($fieldName=="fullAdress" && $this->hasAdress())	{$fieldValue="<a href=\"javascript:lightboxOpen('?ctrl=misc&action=PersonsMap&targetObjects[".static::objectType."]=".$this->_id."');\" title=\"".Txt::trad("mapLocalize")."\">".$this->adress." ".$this->postalCode." ".$this->city." <img src='app/img/map.png'></a>";}//Adresse complete : affiche une carte 
+		elseif($fieldName=="lastConnection")					{$fieldValue=(!empty($fieldValue))  ?  Txt::trad("lastConnection2")." ".Txt::displayDate($fieldValue,"dateMini")  :  Txt::trad("lastConnectionEmpty");}//"Connecté le 20 mars" / "Pas encore connecté"
+		elseif($fieldName=="comment")							{$fieldValue=nl2br($fieldValue);}
+		//Retourne le champ dans son conteneur
+		if(!empty($fieldValue)){
+			if($displayMode=="block")	{return "<div class='objPersonDetail'>".$fieldValue."</div>";}
+			elseif($displayMode=="line"){return "<div class='objPersonDetail'>".$fieldValue."</div> <img src='app/img/separator.png'> ";}
+			else						{return "<div class='objField'><div class='fieldLabel'><img src='app/img/person/".$fieldName.".png'> ".Txt::trad($fieldName)."</div><div>".$fieldValue."</div></div>";}
 		}
 	}
 
 	/*
-	 * Photo d'un contact	(ex "photo_user()")
+	 * La personne possède une image ?
 	 */
-	public function getImg($openProfileVue=false, $userSmallImg=false, $onlyImgPath=false)
+	public function hasImg()
 	{
-		if(is_file($this->pathImgThumb()))	{$personImg=$this->pathImgThumb();}//Path de l'image
-		elseif($userSmallImg==true)			{$personImg="app/img/user/accesUser.png";}//Image par défaut 'small'
-		else								{$personImg="app/img/user/userProfile.png";}//Image par défaut
-		$personImg=($onlyImgPath==true)  ?  $personImg  :  "<img src='".$personImg."' class='personPicture'>";//renvoie le path uniquement?
-		$personImg=($onlyImgPath==false && $openProfileVue==true)  ?  "<a href=\"javascript:lightboxOpen('".$this->getUrl("vue")."');\">".$personImg."</a>"  :  $personImg;//Ajoute le lien vers la vue?
-		return $personImg;
+		if($this->_hasImg===null)  {$this->_hasImg=is_file($this->pathImgThumb());}
+		return $this->_hasImg;
+	}
+
+	/*
+	 * Path de l'image
+	 */
+	public function getImgPath($getDefaultImg=false)
+	{
+		if($this->hasImg())				{return $this->pathImgThumb()."?version=".md5($this->dateModif);}//"version" pour toujours afficher la derniere image mise en cache
+		elseif($getDefaultImg==true)	{return "app/img/".static::moduleName."/personDefault.png";}//image par défaut : si demandé
+	}
+
+	/*
+	 * Balise <img> de l'image du profil user || du contact
+	 */
+	public function getImg($openProfile=false, $smallImg=false, $getDefaultImg=false)
+	{
+		$imgPath=$this->getImgPath($getDefaultImg);
+		if(!empty($imgPath)){
+			$personImg="<img src='".$imgPath."' class='personImg ".($smallImg==true?"personImgSmall":null)."'>";
+			if($openProfile==true)  {$personImg="<a href=\"javascript:lightboxOpen('".$this->getUrl("vue")."');\" title=\"".Txt::trad("displayProfil")."\">".$personImg."</a>";}
+			return $personImg;
+		}
 	}
 
 	/*
@@ -223,13 +268,16 @@ class MdlPerson extends MdlObject
 	 */
 	public function displayImgMenu()
 	{
-		$isFile=is_file($this->pathImgThumb());
-		return Txt::trad("picture")." : <select name='personImgAction' onChange=\"this.value=='change' ? \$('#addImgPerson').fadeIn() : \$('#addImgPerson').fadeOut();\">".
-					"<option>".($isFile==true?Txt::trad("garder"):null)."</option>".
-					($isFile==true ? "<option value='delete'>".Txt::trad("supprimer")."</option>" : null).
-					"<option value='change'>".($isFile==true?Txt::trad("image_changer"):Txt::trad("ajouter"))."</option>".
-				"</select>".
-				"<div id='addImgPerson' class='hide'><br><input type='file' name='personImgFile'></div>";
+		////	Ajouter un fichier  OU  Fichier à conserver/modifier/supprimer
+		if($this->hasImg()!=true)	{return "<input type='file' name='personImgFile'><input type='hidden' name='personImgAction' value='change'>";}	
+		else{
+			return "<select name='personImgAction' onchange=\"if(this.value=='change') {\$('[name=personImgFile]').fadeIn();} else {\$('[name=personImgFile]').fadeOut();}\">
+						<option>".Txt::trad("keepImg")."</option>
+						<option value='change'>".Txt::trad("changeImg")."</option>
+						<option value='delete'>".Txt::trad("delete")."</option>
+					</select>
+					<input type='file' name='personImgFile' style='display:none;margin-top:10px;'>";
+		}
 	}
 
 	/*
@@ -242,7 +290,7 @@ class MdlPerson extends MdlObject
 			// Supprime
 			if(Req::getParam("personImgAction")=="delete")	{unlink($this->pathImgThumb());}
 			// Ajoute / change
-			if(Req::getParam("personImgAction")=="change" && File::controlType("imageResize",$_FILES["personImgFile"]["name"])){
+			if(Req::getParam("personImgAction")=="change" && !empty($_FILES["personImgFile"]) && File::isType("imageResize",$_FILES["personImgFile"]["name"])){
 				move_uploaded_file($_FILES["personImgFile"]["tmp_name"], $this->pathImgThumb());
 				File::imageResize($this->pathImgThumb(),$this->pathImgThumb(),200);
 			}
@@ -259,17 +307,29 @@ class MdlPerson extends MdlObject
 		////	EXPORT CSV
 		if(strstr($exportType,"csv"))
 		{
-			//Nom et entete du fichier
+			//Nom et champs du .csv
 			$csv=static::$csvFormats[$exportType];
 			$fileName=$exportType.".csv";
-			foreach($csv["fieldKeys"] as $fieldAgora=>$fieldCsv)	{$fileContent.=$csv["enclosure"].$fieldCsv.$csv["enclosure"].$csv["delimiter"];}
+			//Enlève la colonne "password" pour tous les exports csv  &&  la colonne "login" pour les contacts 
+			unset($csv["fieldKeys"]["password"]);
+			if(static::objectType!="user")  {unset($csv["fieldKeys"]["login"]);}
+			//Créé l'entête du fichier CSV (ajoute la colonne "groups" pour les users)
+			foreach($csv["fieldKeys"] as $fieldAgora=>$fieldCsv)  {$fileContent.=$csv["enclosure"].$fieldCsv.$csv["enclosure"].$csv["delimiter"];}
+			if(static::objectType=="user")  {$fileContent.=$csv["enclosure"]."groups".$csv["enclosure"].$csv["delimiter"];}
 			$fileContent.="\n";
-			//Ajout de chaque contact
-			foreach($personObjList as $tmpContact){
+			//Ajoute chaque user/contact
+			foreach($personObjList as $tmpPerson)
+			{
+				//Ajoute chaque champ du user/contact
 				foreach($csv["fieldKeys"] as $fieldAgora=>$fieldCsv){
-					if($csv["enclosure"]=="'")		{$tmpContact->$fieldAgora=addslashes($tmpContact->$fieldAgora);}
-					$fileContent.=(!empty($tmpContact->$fieldAgora))  ?  $csv["enclosure"].$tmpContact->$fieldAgora.$csv["enclosure"].$csv["delimiter"]  :  $csv["delimiter"];
+					if($csv["enclosure"]=="'")	{$tmpPerson->$fieldAgora=addslashes($tmpPerson->$fieldAgora);}//Addslashes de la valeur si besoin
+					$fileContent.=(!empty($tmpPerson->$fieldAgora))  ?  $csv["enclosure"].$tmpPerson->$fieldAgora.$csv["enclosure"].$csv["delimiter"]  :  $csv["delimiter"];
 				}
+				//User : ajoute la liste des groupes
+				if(static::objectType=="user"){
+					foreach(MdlUserGroup::getGroups(null,$tmpPerson) as $tmpGroup)  {$fileContent.=$csv["enclosure"].$tmpGroup->title.$csv["enclosure"].$csv["delimiter"];}
+				}
+				//Retour à la ligne
 				$fileContent.="\n";
 			}
 		}
@@ -278,28 +338,27 @@ class MdlPerson extends MdlObject
 		{
 			//Init
 			$fileName="contact.ldif";
-			//Ajout de chaque contact
-			foreach($personObjList as $tmpContact)
+			//Ajout de chaque personne
+			foreach($personObjList as $tmpPerson)
 			{
-				$fileContent.="dn: cn=".$tmpContact->firstName." ".$tmpContact->name."\n";
+				$fileContent.="dn: cn=".$tmpPerson->firstName." ".$tmpPerson->name."\n";
 				$fileContent.="objectclass: top\n";
 				$fileContent.="objectclass: person\n";
 				$fileContent.="objectclass: organizationalPerson\n";
-				$fileContent.="cn: ".$tmpContact->firstName." ".$tmpContact->name."\n";
-				$fileContent.="givenName: ".$tmpContact->firstName."\n";
-				$fileContent.="sn: ".$tmpContact->name."\n";
-				if(!empty($tmpContact->mail))				{$fileContent.="mail: ".$tmpContact->mail."\n";}
-				if(!empty($tmpContact->telephone))			{$fileContent.="homePhone: ".$tmpContact->telephone."\n";}
-				if(!empty($tmpContact->telephone))			{$fileContent.="telephonenumber: ".$tmpContact->telephone."\n";}
-				if(!empty($tmpContact->fax))				{$fileContent.="fax: ".$tmpContact->fax."\n";}
-				if(!empty($tmpContact->telmobile))			{$fileContent.="mobile: ".$tmpContact->telmobile."\n";}
-				if(!empty($tmpContact->adress))				{$fileContent.="homeStreet: ".$tmpContact->adress."\n";}
-				if(!empty($tmpContact->city))				{$fileContent.="mozillaHomeLocalityName: ".$tmpContact->city."\n";}
-				if(!empty($tmpContact->postalCode))			{$fileContent.="mozillaHomePostalCode: ".$tmpContact->postalCode."\n";}
-				if(!empty($tmpContact->country))				{$fileContent.="mozillaHomeCountryName: ".$tmpContact->country."\n";}
-				if(!empty($tmpContact->companyOrganization)){$fileContent.="company: ".$tmpContact->companyOrganization."\n";}
-				if(!empty($tmpContact->function))			{$fileContent.="title: ".$tmpContact->function."\n";}
-				if(!empty($tmpContact->comment))			{$fileContent.="description: ".$tmpContact->comment."\n";}
+				$fileContent.="cn: ".$tmpPerson->firstName." ".$tmpPerson->name."\n";
+				$fileContent.="givenName: ".$tmpPerson->firstName."\n";
+				$fileContent.="sn: ".$tmpPerson->name."\n";
+				if(!empty($tmpPerson->mail))				{$fileContent.="mail: ".$tmpPerson->mail."\n";}
+				if(!empty($tmpPerson->telephone))			{$fileContent.="homePhone: ".$tmpPerson->telephone."\n";}
+				if(!empty($tmpPerson->telephone))			{$fileContent.="telephonenumber: ".$tmpPerson->telephone."\n";}
+				if(!empty($tmpPerson->telmobile))			{$fileContent.="mobile: ".$tmpPerson->telmobile."\n";}
+				if(!empty($tmpPerson->adress))				{$fileContent.="homeStreet: ".$tmpPerson->adress."\n";}
+				if(!empty($tmpPerson->city))				{$fileContent.="mozillaHomeLocalityName: ".$tmpPerson->city."\n";}
+				if(!empty($tmpPerson->postalCode))			{$fileContent.="mozillaHomePostalCode: ".$tmpPerson->postalCode."\n";}
+				if(!empty($tmpPerson->country))				{$fileContent.="mozillaHomeCountryName: ".$tmpPerson->country."\n";}
+				if(!empty($tmpPerson->companyOrganization))	{$fileContent.="company: ".$tmpPerson->companyOrganization."\n";}
+				if(!empty($tmpPerson->function))			{$fileContent.="title: ".$tmpPerson->function."\n";}
+				if(!empty($tmpPerson->comment))				{$fileContent.="description: ".$tmpPerson->comment."\n";}
 				$fileContent.="\n";
 			}
 		}
@@ -325,7 +384,7 @@ class MdlPerson extends MdlObject
 		ldap_set_option($ldapConnection, LDAP_OPT_REFERRALS, 0);		//Pour Active Directory
 		// Identification au serveur LDAP en tant qu'admin + retourne la connexion ldap si c'est ok
 		$ldapIdentification=@ldap_bind($ldapConnection, $ldapUserLogin, $ldapUserPassword);
-		if($ldapIdentification==false && $displayNotif==true)	{Ctrl::addNotif("ldap_connexion_erreur");}
+		if($ldapIdentification==false && $displayNotif==true)	{Ctrl::addNotif("AGORA_ldapConnectError");}
 		return ($ldapIdentification==false) ? false : $ldapConnection;
 	}
 
@@ -345,7 +404,6 @@ class MdlPerson extends MdlObject
 				"mail"				=>array("mail"),
 				"telmobile"			=>array("mobile","mobiletelephonenumber"),
 				"telephone"			=>array("telephonenumber","homephone","hometelephonenumber"),
-				"fax"				=>array("fax","facsimiletelephonenumber"),
 				"adress"			=>array("postaladdress","homepostaladdress","streetaddress","street"),
 				"postalCode"		=>array("postalcode","homepostalcode"),
 				"city"				=>array("localityname","l"),

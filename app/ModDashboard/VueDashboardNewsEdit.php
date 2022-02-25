@@ -1,12 +1,17 @@
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(700);
+lightboxSetWidth(800);
 
-////	Archive la news si ya une date de mise en ligne
+////	INIT
 $(function(){
-	$(".dateBegin, .dateEnd").change(function(){
-		if($(".dateBegin").isEmpty()==false && $("[name='offline']").prop("checked")==false){
-			displayNotif("<?= Txt::trad("DASHBOARD_dateOnline_alerte") ?>");
+	////	Archive la news si ya une date de mise en ligne (futur)
+	$(".dateBegin").change(function(){
+		//date d'aujourd'hui en ms
+		var dateBegin=$(this).val().split("/");
+		var timeBegin=new Date(dateBegin[1]+"/"+dateBegin[0]+"/"+dateBegin[2]);//attention au format : mois/jour/annee
+		//Date "online" spécifié && supérieure à aujourd'hui &&  "offline" pas sélectionné
+		if($(".dateBegin").isEmpty()==false && Date.now() < timeBegin.valueOf() && $("[name='offline']").prop("checked")==false){
+			notify("<?= Txt::trad("DASHBOARD_dateOnlineNotif") ?>");
 			$("[name='offline']").trigger("click");
 		}
 	});
@@ -14,27 +19,47 @@ $(function(){
 </script>
 
 <style>
-.dateBegin,.dateEnd				{width:150px;}
-[name='une'],[name='offline']	{display:none;}
-[for='uneCheckbox'],[name='dateOnline'],[name='dateOffline']	{margin-right:15px;}
+#newsOptions			{margin-top:22px; text-align:center;}
+#newsOptions>div		{display:inline-block; margin-right:20px; margin-top:15px;}
+#newsOptions img		{vertical-align:bottom;}
+.dateBegin, .dateEnd	{width:160px!important;}/*surcharge*/
+.dateBegin::placeholder, .dateEnd::placeholder	{font-size:0.9em;}/*pour afficher le "placeholder"*/
+input[name='une'],input[name='offline']	{display:none;}
 </style>
 
-<form action="index.php" method="post" onsubmit="return finalFormControl()" enctype="multipart/form-data">
+<form action="index.php" method="post" onsubmit="return mainFormControl()" enctype="multipart/form-data" class="lightboxContent">
+	
+	<!--TITRE RESPONSIVE-->
+	<?php echo $curObj->editRespTitle("DASHBOARD_addNews"); ?>
+
 	<!--DESCRIPTION (EDITOR)-->
-	<textarea name="description"><?= $objNews->description ?></textarea>
-	<!--OPTIONS-->
-	<fieldset class="fieldsetCenter fieldsetMarginTop sBlock">
+	<textarea name="description"><?= $curObj->description ?></textarea>
+
+	<div id="newsOptions">
 		<!--A LA UNE-->
-		<input type="checkbox" name="une" value="1" id="uneCheckbox" <?= $objNews->une==1?"checked":"" ?>>
-		<img src="app/img/dashboard/une.png"> <label for="uneCheckbox" class="abbr" title="<?= Txt::trad("DASHBOARD_ala_une_info") ?>"><?= Txt::trad("DASHBOARD_ala_une") ?></label>
+		<div>
+			<img src="app/img/dashboard/topNews.png">
+			<input type="checkbox" name="une" value="1" id="uneCheckbox" <?= $curObj->une==1?"checked":"" ?>>
+			<label for="uneCheckbox" title="<?= Txt::trad("DASHBOARD_topNewsInfo") ?>"><?= Txt::trad("DASHBOARD_topNews") ?></label>	
+		</div>
+		<!--IS OFFLINE-->
+		<div>
+			<img src="app/img/dashboard/newsOffline.png">
+			<input type="checkbox" name="offline" value="1" id="offlineCheckbox" <?= $curObj->offline==1?"checked":null ?>>
+			<label for="offlineCheckbox"><?= Txt::trad("DASHBOARD_offline") ?></label>
+		</div>
 		<!--DATE ONLINE-->
-		<img src="app/img/dashboard/online.png"> <input type="text" name="dateOnline" class="dateBegin" value="<?= Txt::formatDate($objNews->dateOnline,"dbDate","inputDate") ?>" placeholder="<?= Txt::trad("DASHBOARD_dateOnline") ?>" title="<?= Txt::trad("DASHBOARD_dateOnline_info") ?>">
+		<div>
+			<img src="app/img/dashboard/dateOnline.png">
+			<input type="text" name="dateOnline" class="dateBegin" value="<?= Txt::formatDate($curObj->dateOnline,"dbDatetime","inputDate") ?>" placeholder="<?= Txt::trad("DASHBOARD_dateOnline") ?>" title="<?= Txt::trad("DASHBOARD_dateOnlineInfo") ?>">
+		</div>
 		<!--DATE OFFLINE-->
-		<img src="app/img/dashboard/offline.png"> <input type="text" name="dateOffline" class="dateEnd" value="<?= Txt::formatDate($objNews->dateOffline,"dbDate","inputDate") ?>" placeholder="<?= Txt::trad("DASHBOARD_dateOffline") ?>" title="<?= Txt::trad("DASHBOARD_dateOffline_info") ?>">
-		<!--OFFLINE-->
-		<input type="checkbox" name="offline" value="1" id="offlineCheckbox" <?= $objNews->offline==1?"checked":"" ?>>
-		<label for="offlineCheckbox" class="abbr" title="<?= Txt::trad("DASHBOARD_offline_info") ?>"><?= Txt::trad("DASHBOARD_offline") ?></label> <img src="app/img/dashboard/offline.png"> 
-	</fieldset>
+		<div>
+			<img src="app/img/dashboard/dateOffline.png">
+			<input type="text" name="dateOffline" class="dateEnd" value="<?= Txt::formatDate($curObj->dateOffline,"dbDatetime","inputDate") ?>" placeholder="<?= Txt::trad("DASHBOARD_dateOffline") ?>" title="<?= Txt::trad("DASHBOARD_dateOfflineInfo") ?>">
+		</div>
+	</div>
+
 	<!--MENU COMMUN-->
-	<?= $objNews->menuEditValidate() ?>
+	<?= $curObj->menuEdit() ?>
 </form>

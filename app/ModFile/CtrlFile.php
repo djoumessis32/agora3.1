@@ -1,4 +1,12 @@
 <?php
+/**
+* This file is part of the Agora-Project Software package.
+*
+* @copyright (c) Agora-Project Limited <https://www.agora-project.net>
+* @license GNU General Public License, version 2 (GPL-2.0)
+*/
+
+
 /*
  * Controleur du module "File"
  */
@@ -6,7 +14,7 @@ class CtrlFile extends Ctrl
 {
 	const moduleName="file";
 	public static $folderObjectType="fileFolder";
-	public static $moduleOptions=["AdminRootFolderAddContent"];
+	public static $moduleOptions=["adminRootAddContent"];
 	public static $MdlObjects=array("MdlFile","MdlFileFolder");
 
 	/*
@@ -14,52 +22,47 @@ class CtrlFile extends Ctrl
 	 */
 	public static function actionDefault()
 	{
-		static::$isMainPage=true;
 		////	Verif l'accès en écriture & Occupation d'espace disque
 		if(Ctrl::$curUser->isAdminGeneral())
 		{
 			//Verif l'accès en écriture
 			if(!is_writable(Ctrl::$curContainer->folderPath("real")))
-				{Ctrl::addNotif(Txt::trad("FILE_ajouter_fichier_alert")." (fileFolderId=".Ctrl::$curContainer->_id.")", "warning");}
+				{Ctrl::addNotif(Txt::trad("FILE_addFileAlert")." (fileFolderId=".Ctrl::$curContainer->_id.")", "warning");}
 			//Occupation d'espace disque
 			$folderSize=File::folderSize(PATH_MOD_FILE);
-			$fillRatePercent=ceil(($folderSize/limite_espace_disque)*100);
-			$txtBar=Txt::trad("espace_disque_utilise")." : ".$fillRatePercent."%";
-			$txtTooltip=Txt::trad("espace_disque_utilise_mod_fichier")." : ".File::displaySize($folderSize)." ".Txt::trad("de")." ".File::displaySize(limite_espace_disque);
-			$vDatas["fillRateLevel"]=ceil($fillRatePercent/33);
-			$fillRateLevelHight=($fillRatePercent>70) ? true : false;
-			$vDatas["fillRateBar"]=Tool::percentBar($fillRatePercent, $txtBar, $txtTooltip, $fillRateLevelHight);
+			$diskSpacePercent=ceil(($folderSize/limite_espace_disque)*100);
+			$txtBar=Txt::trad("diskSpaceUsed")." : ".$diskSpacePercent."%";
+			$txtTooltip=Txt::trad("diskSpaceUsedModFile")." : ".File::displaySize($folderSize)." ".Txt::trad("from")." ".File::displaySize(limite_espace_disque);
+			$vDatas["diskSpaceAlert"]=($diskSpacePercent>70) ? true : false;
+			$vDatas["fillRateBar"]=Tool::percentBar($diskSpacePercent, $txtBar, $txtTooltip, $vDatas["diskSpaceAlert"]);
 		}
 		////	Dossiers & Fichiers
-		$vDatas["foldersList"]=self::$curContainer->foldersList(true);
-		$vDatas["filesList"]=Db::getObjTab("file", "SELECT * FROM ap_file WHERE ".MdlFile::sqlDisplayedObjects(self::$curContainer)." ".MdlFile::sqlSort(self::$curContainer));
+		$vDatas["foldersList"]=self::$curContainer->folders();
+		$vDatas["filesList"]=Db::getObjTab("file", "SELECT * FROM ap_file WHERE ".MdlFile::sqlDisplayedObjects(self::$curContainer)." ".MdlFile::sqlSort());
 		foreach($vDatas["filesList"] as $fileKey=>$tmpFile)
 		{
-			//Type du fichier
-			if(File::controlType("imageBrowser",$tmpFile->name))	{$tmpFile->fileType="image";}
-			elseif(File::controlType("pdf",$tmpFile->name))			{$tmpFile->fileType="pdf";}
-			elseif(File::controlType("mp3",$tmpFile->name))			{$tmpFile->fileType="mp3";}
-			elseif(File::controlType("videoPlayer",$tmpFile->name))	{$tmpFile->fileType="video";}
-			else													{$tmpFile->fileType="misc";}
-			//Lien de l'icone du fichier : lightbox / lecteur / telechargement direct
-			if($tmpFile->fileType=="image")									{$tmpFile->iconHref="href=\"".$tmpFile->urlDownloadDisplay("display")."\" rel='lightboxGallery'";}
-			elseif($tmpFile->fileType=="pdf" || $tmpFile->fileType=="mp3")	{$tmpFile->iconHref="href=\"javascript:lightboxOpen('".$tmpFile->urlDownloadDisplay("display")."');\" rel='lightboxGallery'";}
-			elseif($tmpFile->fileType=="video")								{$tmpFile->iconHref="href=\"javascript:lightboxOpen('".$tmpFile->filePath()."');\" rel='lightboxGallery'";}
-			else															{$tmpFile->iconHref="href=\"".$tmpFile->urlDownloadDisplay()."\" target='_blank'";}//telechargement direct
+			//Lien du label du fichier : Télécharge le fichier (dans une nouvelle fenêtre car cela peut bloquer la page si c'est un gros fichier)
+			$tmpFile->labelLink="onclick=\"if(confirm('".Txt::trad("download",true)." ?')) window.open('".$tmpFile->urlDownloadDisplay()."','_blank');\"";
+			//Lien de l'icone du fichier :
+			if(File::isType("imageBrowser",$tmpFile->name))								{$tmpFile->iconLink="href=\"".$tmpFile->urlDownloadDisplay("display")."\" data-fancybox='images'";}	//Lightbox d'image ("href" et "data-fancybox" obligatoires)
+			elseif(File::isType("pdfTxt",$tmpFile->name) && Req::isMobileApp()==false)	{$tmpFile->iconLink="onclick=\"lightboxOpen('".$tmpFile->urlDownloadDisplay("display")."');\"";}	//Lightbox de pdf ou text
+			elseif(File::isType("mediaPlayer",$tmpFile->name))							{$tmpFile->iconLink="onclick=\"lightboxOpen('".$tmpFile->filePath()."');\"";}						//Lightbox de vidéo ou mp3
+			else																		{$tmpFile->iconLink=$tmpFile->labelLink;}															//Telechargement direct
 			//Tooltips et description
-			$tmpFile->tooltip=Txt::trad("telecharger")."<br>".$tmpFile->name;
+			$tmpFile->tooltip=Txt::trad("download")." <i>".$tmpFile->name."</i>";
 			$tmpFile->iconTooltip=$tmpFile->name." - ".File::displaySize($tmpFile->octetSize);
-			if(!empty($tmpFile->description))	{$tmpFile->iconTooltip.="<br>".$tmpFile->description;}
-			//Definition en pixel d'une image (ajoute au tooltip)  &&  Class "thumbLandscape"/"thumbPortrait" d'une vignette (image/pdf)
+			if(!empty($tmpFile->description))	{$tmpFile->iconTooltip.="<hr>".Txt::formatTooltip($tmpFile->description);}
+			//Vignette d'image/pdf
 			if($tmpFile->hasThumb())
 			{
-				$imgWidth=$imgHeight=null;
-				if($tmpFile->fileType=="image"){
+				//Classe de la vignette : "thumb"
+				$tmpFile->hasThumbClass="hasThumb";
+				//Image (pas pdf) : ajoute la résolution d'image && la classe "thumbLandscape" ou "thumbPortrait"
+				if(File::isType("imageBrowser",$tmpFile->name)){
 					list($imgWidth,$imgHeight)=getimagesize($tmpFile->filePath());
-					$tmpFile->iconTooltip.="<br>".$imgWidth." x ".$imgHeight." ".Txt::trad("pixels");
+					$tmpFile->iconTooltip.=" - ".$imgWidth." x ".$imgHeight." ".Txt::trad("pixels");
+					$tmpFile->thumbClass=($imgWidth>$imgHeight) ? "thumbLandscape" : "thumbPortrait";
 				}
-				$tmpFile->thumbClass=($imgWidth>$imgHeight) ? "hasThumb thumbLandscape" : "hasThumb thumbPortrait";
-				if($tmpFile->fileType=="pdf")	{$tmpFile->thumbClass.=" thumbPdf";}
 			}
 			//Ajoute le fichier
 			$vDatas["filesList"][$fileKey]=$tmpFile;
@@ -73,35 +76,45 @@ class CtrlFile extends Ctrl
 	 */
 	public static function plugin($pluginParams)
 	{
-		$pluginParams=array_merge($pluginParams,array("MdlObjectFolder"=>"MdlFileFolder"));
-		$pluginsList=self::getPluginsFolders($pluginParams);
+		$pluginsList=self::getPluginsFolders($pluginParams,"MdlFileFolder");
 		foreach(MdlFile::getPluginObjects($pluginParams) as $tmpObj)
 		{
 			$tmpObj->pluginModule=self::moduleName;
-			$tmpObj->pluginIcon=self::moduleName."/icon.png";
+			$tmpObj->pluginIcon=self::moduleName."/fileType/misc.png";
 			$tmpObj->pluginLabel=$tmpObj->name;
-			$tmpObj->pluginTitle=$tmpObj->containerObj()->folderPath("text")."<br>".$tmpObj->displayAutor(true,true);
-			$tmpObj->pluginJsIcon="redir('".$tmpObj->getUrl("container")."',true);";
-			$tmpObj->pluginJsLabel="redir('".$tmpObj->urlDownloadDisplay("container")."',true);";
+			$tmpObj->pluginTooltip=$tmpObj->containerObj()->folderPath("text");
+			$tmpObj->pluginJsIcon="windowParent.redir('".$tmpObj->getUrl("container")."');";//Redir vers le dossier conteneur
+			$tmpObj->pluginJsLabel="if(confirm('".Txt::trad("download",true)." ?')){windowParent.redir('".$tmpObj->urlDownloadDisplay()."');}";
 			$pluginsList[]=$tmpObj;
 		}
 		return $pluginsList;
 	}
 
 	/*
-	 * ACTION : Affichage/Download un fichier
+	 * ACTION : Affichage/Download d'un fichier dans le DATAS
 	 */
 	public static function actionGetFile()
 	{
 		if(Req::isParam("targetObjId"))
 		{
+			//Récupère le fichier et controle le droit d'accès
 			$curFile=self::getTargetObj();
-			if($curFile->readRight())
+			if($curFile->readRight()  ||  (Req::isParam("nameMd5") && md5($curFile->name)==Req::getParam("nameMd5")))
 			{
-				//Affichage/Download du fichier
-				if(Req::isParam("display"))    {File::display($curFile->filePath());}
-				else{
-					Ctrl::addLog("consult2",$curFile);
+				//Affichage du fichier
+				if(Req::isParam("display"))  {File::display($curFile->filePath());}
+				//Download du fichier
+				else
+				{
+					//Ajout l'user courant à "downloadedBy"
+					$sqlDownloadedBy=null;
+					if(Ctrl::$curUser->isUser()){
+						$curFile->downloadedBy=array_unique(array_merge([Ctrl::$curUser->_id], Txt::txt2tab($curFile->downloadedBy)));//"array_unique()" car l'user courant peut avoir déjà téléchargé le fichier
+						$sqlDownloadedBy=", downloadedBy=".Db::format(Txt::tab2txt($curFile->downloadedBy));
+					}
+					//Update la table en incrémentant "downloadsNb" et si possible "downloadedBy"
+					Db::query("UPDATE ".$curFile::dbTable." SET downloadsNb=(downloadsNb + 1) ".$sqlDownloadedBy." WHERE _id=".$curFile->_id);
+					//Télécharge ensuite le fichier
 					$curVersion=$curFile->getVersion(Req::getParam("dateCrea"));
 					File::download($curVersion["name"], $curFile->filePath(Req::getParam("dateCrea")));
 				}
@@ -137,14 +150,10 @@ class CtrlFile extends Ctrl
 			}
 		}
 		////	Ajoute à l'archive les fichiers sélectionnés
-		foreach(self::getTargetObjects("file") as $curFile)
-		{
+		foreach(self::getTargetObjects("file") as $curFile){
 			$archiveSize+=$curFile->octetSize;
 			$archiveName=$curFile->containerObj()->name;
-			if($curFile->readRight()){
-				$filesList[]=array("realPath"=>$curFile->filePath(),"zipPath"=>$curFile->name);
-				Ctrl::addLog("consult2",$curFile);
-			}
+			if($curFile->readRight())  {$filesList[]=array("realPath"=>$curFile->filePath(),"zipPath"=>$curFile->name);}
 		}
 		////	Controle la taille de l'archive et l'envoie
 		if(!empty($filesList)){
@@ -161,7 +170,7 @@ class CtrlFile extends Ctrl
 		////	Charge le fichier
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlEdit();
-		////	Formulaire validé
+		////	Valide le formulaire
 		if(Req::isParam("formValidate"))
 		{
 			//Enregistre & recharge le fichier + update la dernière version
@@ -170,7 +179,8 @@ class CtrlFile extends Ctrl
 			$lastVersion=$curObj->getVersion();
 			Db::Query("UPDATE ap_fileVersion SET name=".Db::format($fileName).", description=".Db::formatParam("description")." WHERE _idFile=".$lastVersion["_idFile"]." AND dateCrea=".Db::format($lastVersion["dateCrea"]));
 			//Modif contenu du fichier texte/html
-			if(Req::isParam("fileContent") && Req::getParam("fileContent")!=Req::getParam("fileContentOld")){
+			if(Req::isParam("fileContent") && Req::getParam("fileContent")!=Req::getParam("fileContentOld"))
+			{
 				$folderPath=$curObj->containerObj()->folderPath("real");
 				$newFileRealName=$curObj->_id."_".time().Req::getParam("dotExtension");
 				$fp=fopen($folderPath.$newFileRealName, "w");
@@ -179,19 +189,19 @@ class CtrlFile extends Ctrl
 				Db::query("INSERT INTO ap_fileVersion SET _idFile=".$curObj->_id.", name=".Db::formatParam("name").", realName=".Db::format($newFileRealName).", description=".Db::formatParam("description").", octetSize=".(int)filesize($folderPath.$newFileRealName).", dateCrea=".Db::dateNow().", _idUser=".Ctrl::$curUser->_id);
 			}
 			//Notifie par mail & Ferme la page
-			$notifMail=$curObj->name;
-			if(!empty($curObj->description))	{$notifMail .= "<br>".$curObj->description;}
-			$curObj->sendMailNotif($notifMail);
-			static::lightboxClose();
+			$curObj->sendMailNotif();
 		}
 		////	Affiche la vue
-		$vDatas["curObj"]=$curObj;
-		//Fichier directement éditable (text/html) ?
-		if(File::controlType("text",$curObj->name) || File::controlType("html",$curObj->name)){
-			$vDatas["fileContent"]=implode("",file($curObj->filePath()));
-			if(File::controlType("html",$curObj->name))	{$vDatas["initHtmlEditor"]=true;}
+		else
+		{
+			$vDatas["curObj"]=$curObj;
+			//Fichier directement éditable (text/html) ?
+			if(File::isType("text",$curObj->name) || File::isType("html",$curObj->name)){
+				$vDatas["fileContent"]=implode("",file($curObj->filePath()));
+				if(File::isType("html",$curObj->name))  {$vDatas["initHtmlEditor"]=true;}
+			}
+			static::displayPage("VueFileEdit.php",$vDatas);
 		}
-		static::displayPage("VueFileEdit.php",$vDatas);
 	}
 
 	/*
@@ -199,95 +209,87 @@ class CtrlFile extends Ctrl
 	 */
 	public static function actionAddEditFiles()
 	{
-		////	Charge l'objet && Affiche uniquement les "Notif" du "menuEditValidate();" si nouvelle version du fichier
+		////	Charge l'objet & Controles d'accès
 		$curObj=Ctrl::getTargetObj();
 		$curObj->controlEdit();
-		if(Req::isParam("_idContainer")==false)	{$curObj->onlyNotifMenu=true;}
-		////	Controle la taille du DATAS ET L'accès physique au dossier
-		if(File::datasFolderSize() > limite_espace_disque)					{Ctrl::noAccessExit(Txt::trad("MSG_NOTIF_espace_disque"));}
-		elseif(!is_dir($curObj->containerObj()->folderPath("real")))		{Ctrl::noAccessExit(Txt::trad("MSG_NOTIF_acces_fichier_dossier")." : ".$curObj->containerObj()->name);}
-		elseif(!is_writable($curObj->containerObj()->folderPath("real")))	{Ctrl::noAccessExit(Txt::trad("MSG_NOTIF_chmod_DATAS"));}
-		////	Formulaire validé
+		$folderPath=$curObj->containerObj()->folderPath("real");
+		if(!is_dir($folderPath) || !is_writable($folderPath))  {Ctrl::noAccessExit(Txt::trad("NOTIF_fileOrFolderAccess")." : ".$curObj->containerObj()->name);}
+		////	Valide le formulaire
 		if(Req::isParam("formValidate"))
 		{
 			//Init
-			$newFiles=$newFilesAdded=$notifFilesLabels=$notifFilesAttachements=array();
-			$tmpDatasFolderSize=File::datasFolderSize();
-			////	PRÉPARE LES FICHIERS ENVOYÉS AVEC $_FILE ("addVersion" OU plupload désactivé)
-			if(!empty($_FILES))
-			{
-				foreach($_FILES as $fileKey=>$tmpFile){
-					if($tmpFile["error"]==1 || $tmpFile["error"]==2)	{Ctrl::addNotif(Txt::trad("FILE_erreur_taille_fichier")." : ".$tmpFile["name"]);}
-					elseif($tmpFile["error"]==0){
-						$newFiles[]=array("tmpPath"=>$tmpFile["tmp_name"],"name"=>$tmpFile["name"]);
-						if(Req::isParam("addVersion") && File::extension($curObj->name)!=File::extension($tmpFile["name"]))//Notif de changement de type de fichier
-							{Ctrl::addNotif(Txt::trad("MSG_NOTIF_type_version")." : ".File::extension($tmpFile["name"])." -> ".File::extension($tmpFile["name"]));}
-					}
-				}
-			}
-			////	PRÉPARE LE/LES FICHIERS ENVOYÉS AVEC "PLUPLOAD"
-			if(Req::isParam("tmpFolderName"))
+			@set_time_limit(240);//disabled en safemode
+			$newFiles=$notifFilesLabel=$notifFiles=[];
+			////	RECUPERE LES FICHIERS DEJA ENVOYÉS AVEC "PLUPLOAD"
+			if(Req::getParam("uploadForm")=="uploadMultiple" && Req::isParam("tmpFolderName") && preg_match("/[a-z0-9]/i",Req::getParam("tmpFolderName")))
 			{
 				$tmpDirPath=sys_get_temp_dir()."/".Req::getParam("tmpFolderName")."/";
 				if(is_dir($tmpDirPath)){
 					foreach(scandir($tmpDirPath) as $tmpFileName){
 						$tmpFilePath=$tmpDirPath.$tmpFileName;
-						if(is_file($tmpFilePath))	{$newFiles[]=array("tmpPath"=>$tmpFilePath,"name"=>$tmpFileName);}
+						if(is_file($tmpFilePath))  {$newFiles[]=array("tmpPath"=>$tmpFilePath,"name"=>$tmpFileName);}
 					}
 				}
 			}
-			////	AJOUTE LE/LES FICHIERS
+			////	RECUPERE LES FICHIERS ENVOYÉS AVEC $_FILE ("addFileVersion" OU "addFileSimple")
+			elseif(!empty($_FILES))
+			{
+				foreach($_FILES as $fileKey=>$tmpFile){
+					if($tmpFile["error"]==0){
+						$newFiles[]=["tmpPath"=>$tmpFile["tmp_name"], "name"=>$tmpFile["name"]];//Ajoute le fichier
+						if(Req::isParam("addVersion") && File::extension($curObj->name)!=File::extension($tmpFile["name"]))
+							{Ctrl::addNotif(Txt::trad("NOTIF_fileVersion")." : ".File::extension($tmpFile["name"])." -> ".File::extension($tmpFile["name"]));}//Notifie si besoin du changement d'extension du fichier
+					}
+				}
+			}
+	
+			////	AJOUTE CHAQUE FICHIER
+			$datasFolderSize=File::datasFolderSize();
 			foreach($newFiles as $fileKey=>$tmpFile)
 			{
-				////	Controles
-				//Fichier interdit : affiche une notification et passe au fichier suivant
-				if(File::controlType("forbidden",$tmpFile["name"]))   {Ctrl::addNotif(Txt::trad("MSG_NOTIF_type_interdit")." : ".$tmpFile["name"]);  continue;}
-				//Pas assez d'espace disque: sort de la boucle.. sinon incrémente l'espace disque total et ajoute le fichier courant à $newFilesAdded
+				////	Controle du fichier
 				$fileSize=filesize($tmpFile["tmpPath"]);
-				if(($tmpDatasFolderSize+$fileSize) > limite_espace_disque)	{break;}
-				else														{$tmpDatasFolderSize+=$fileSize;  $newFilesAdded[]=$tmpFile;}
-				//Si un autre fichier existe déjà avec le meme nom : Affiche une notif
-				if(Db::getVal("SELECT count(*) FROM ap_file WHERE _idContainer=".(int)$curObj->_idContainer." AND _id!=".$curObj->_id." AND name=".Db::format($tmpFile["name"]))>0)
-					{Ctrl::addNotif(Txt::trad("MSG_NOTIF_fileName")." :<br><br>".$tmpFile["name"]);}
-				////	Charge le fichier, enregistre ses propriétés et recharge l'objet
-				$tmpObj=Ctrl::getTargetObj();//nouveau fichier (create) OU nouvelle version du fichier (update)
-				$tmpObj=$tmpObj->createUpdate("name=".Db::format($tmpFile["name"]).", description=".Db::formatParam("description").", octetSize=".Db::format($fileSize));
-				////	Ajoute la version du fichier
-				$sqlVersionFileName=$tmpObj->_id."_".time().".".File::extension($tmpFile["name"]);
-				Db::query("INSERT INTO ap_fileVersion SET _idFile=".$tmpObj->_id.", name=".Db::format($tmpFile["name"]).", realName=".Db::format($sqlVersionFileName).", octetSize=".Db::format($fileSize).", description=".Db::formatParam("description").", dateCrea=".Db::dateNow().", _idUser=".Ctrl::$curUser->_id.", guest=".Db::formatParam("guest"));
-				copy($tmpFile["tmpPath"], $tmpObj->filePath());//copie dans le dossier final (après avoir enregistré la version en Bdd!!)
-				File::setChmod($tmpObj->filePath());
-				//Creation de vignette ET/OU ImageResize?
-				$tmpObj->createThumb();
-				if(File::controlType("imageResize",$tmpFile["name"]) && Req::isParam("imageResize"))
+				if(File::controleUpload($tmpFile["name"],$fileSize,$datasFolderSize))
 				{
-					File::imageResize($tmpObj->filePath(),$tmpObj->filePath(),Req::getParam("resizeSize"));
-					clearstatcache();//Maj du cache
-					$newFileSize=(int)filesize($tmpObj->filePath());
-					Db::query("UPDATE ap_file SET octetSize=".$newFileSize." WHERE _id=".$tmpObj->_id);
-					Db::query("UPDATE ap_fileVersion SET octetSize=".$newFileSize." WHERE _idFile=".$tmpObj->_id." AND realName=".Db::format($sqlVersionFileName));
+					////	Vérifie si un autre fichier existe déjà avec le meme nom
+					if(Db::getVal("SELECT count(*) FROM ap_file WHERE _idContainer=".(int)$curObj->_idContainer." AND _id!=".$curObj->_id." AND name=".Db::format($tmpFile["name"]))>0)
+						{Ctrl::addNotif(Txt::trad("NOTIF_fileName")." :<br><br>".$tmpFile["name"]);}
+					////	Charge le fichier, enregistre ses propriétés et recharge l'objet
+					$tmpObj=Ctrl::getTargetObj();//nouveau fichier (create) OU nouvelle version du fichier (update)
+					$tmpObj=$lastObjFile=$tmpObj->createUpdate("name=".Db::format($tmpFile["name"]).", description=".Db::formatParam("description").", octetSize=".Db::format($fileSize));
+					////	Ajoute la version du fichier
+					$sqlVersionFileName=$tmpObj->_id."_".time().".".File::extension($tmpFile["name"]);
+					Db::query("INSERT INTO ap_fileVersion SET _idFile=".$tmpObj->_id.", name=".Db::format($tmpFile["name"]).", realName=".Db::format($sqlVersionFileName).", octetSize=".Db::format($fileSize).", description=".Db::formatParam("description").", dateCrea=".Db::dateNow().", _idUser=".Ctrl::$curUser->_id);
+					copy($tmpFile["tmpPath"], $tmpObj->filePath());//copie dans le dossier final (après avoir enregistré la version en Bdd!!)
+					File::setChmod($tmpObj->filePath());
+					////	Creation de vignette && ImageResize à 1600px maxi?
+					$tmpObj->createThumb();
+					if(File::isType("imageResize",$tmpFile["name"]) && Req::isParam("imageResize")){
+						File::imageResize($tmpObj->filePath(), $tmpObj->filePath(), 1600);
+						clearstatcache();//Pour mettre à jour le "filesize()"
+						$fileSize=(int)filesize($tmpObj->filePath());
+						Db::query("UPDATE ap_file SET octetSize=".Db::format($fileSize)." WHERE _id=".$tmpObj->_id);
+						Db::query("UPDATE ap_fileVersion SET octetSize=".Db::format($fileSize)." WHERE _idFile=".$tmpObj->_id." AND realName=".Db::format($sqlVersionFileName));
+					}
+					////	Incrémente l'espace disque total
+					$datasFolderSize+=$fileSize;
+					////	Prepare la notif mail (Affiche le nom des 10 premiers fichiers ..puis le nombre de fichiers restant)
+					if(count($notifFilesLabel)<10)		{$notifFilesLabel[]=$tmpObj->name.(!empty($tmpObj->description)?"<br>".$tmpObj->description:null);}
+					elseif(count($notifFilesLabel)==10)	{$notifFilesLabel[]="... + ".(count($newFiles)-5)." ".Txt::trad("OBJECTfile");}
+					////	Joint le fichier à la notif?
+					if(Req::isParam("notifMailAddFiles"))  {$notifFiles[]=array("path"=>$tmpObj->filePath(),"name"=>$tmpObj->name);}
 				}
-				////	Prepare la notif mail (10 premiers fichiers)
-				$maxNbFiles=10;
-				$fileCpt=$fileKey+1;
-				if($fileCpt<=$maxNbFiles)
-				{
-					$tmpFileNotif=$tmpObj->name;
-					if(!empty($tmpObj->description))    {$tmpFileNotif.="<br>".$tmpObj->description;}//description?
-					$notifFilesLabels[]=$tmpFileNotif;
-					if(Req::isParam("notifMailAddFiles"))    {$notifFilesAttachements[]=array("path"=>$tmpObj->filePath(),"name"=>$tmpObj->name);}//joint le fichier à la notif?
-				}
-				elseif($fileCpt==($maxNbFiles+1))    {$notifFilesLabels[]="[...+ ".(count($newFiles)-$maxNbFiles)." ".Txt::trad("OBJECTfile")."]";}//Sinon affiche "[..+ x fichiers]"
 			}
 			////	Notifie par mail?  Supprime le dossier temporaire?  Ferme la page
-			if(!empty($newFilesAdded))	{$curObj->sendMailNotif(implode("<br><br>",$notifFilesLabels), $notifFilesAttachements);}
-			if(!empty($tmpDirPath) && is_dir($tmpDirPath))	{File::rm($tmpDirPath);}
-			File::datasFolderSize(true);//Maj en session
+			if(!empty($lastObjFile))  {$lastObjFile->sendMailNotif(implode("<br><br>",$notifFilesLabel), null, $notifFiles);}
+			if(!empty($tmpDirPath) && is_dir($tmpDirPath))  {File::rm($tmpDirPath);}
+			File::datasFolderSize(true);//Maj du nouveau "datasFolderSize" (force)
 			static::lightboxClose();
 		}
 		////	Affiche la vue
 		$vDatas["curObj"]=$curObj;
-		$vDatas["tmpFolderName"]=uniqid(mt_rand());
+		$vDatas["tmpFolderName"]="tmpUploadFolder".uniqid(mt_rand());
+		$vDatas["uploadMaxFilesize"]=File::displaySize(File::uploadMaxFilesize());
 		static::displayPage("VueAddEditFiles.php",$vDatas);
 	}
 
@@ -296,15 +298,15 @@ class CtrlFile extends Ctrl
 	 */
 	public static function actionUploadTmpFile()
 	{
-		if(Req::isParam("tmpFolderName") && !empty($_FILES))
+		if(Req::isParam("tmpFolderName") && preg_match("/[a-z0-9]/i",Req::getParam("tmpFolderName")) && !empty($_FILES))
 		{
 			//Init/Crée le dossier temporaire
 			$tmpDirPath=sys_get_temp_dir()."/".Req::getParam("tmpFolderName")."/";
-			if(!is_dir($tmpDirPath))	{mkdir($tmpDirPath);}
+			if(!is_dir($tmpDirPath))  {mkdir($tmpDirPath);}
 			//Vérifie l'accès au dossier temporaire && y place chaque fichier correctement uploadé
 			if(is_writable($tmpDirPath)){
 				foreach($_FILES as $tmpFile){
-					if($tmpFile["error"]==0)	{move_uploaded_file($tmpFile["tmp_name"], $tmpDirPath.$tmpFile["name"]);}
+					if($tmpFile["error"]==0)  {move_uploaded_file($tmpFile["tmp_name"], $tmpDirPath.$tmpFile["name"]);}
 				}
 			}
 		}

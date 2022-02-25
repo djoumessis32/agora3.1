@@ -1,33 +1,30 @@
-<script type="text/javascript">
+<script>
 ////	Resize
-lightboxWidth(700);
+lightboxSetWidth(750);
 </script>
 
 <style>
-[name='title']			{width:400px; max-width:80%; margin-bottom:20px;}
-.vEvtOptionsLabel img	{max-height:15px;}
-.vMessageQuoted					{overflow:auto; max-height:100px; margin-bottom:20px; opacity:0.7; background:#eee; border-radius:5px; padding:5px; font-style:italic; font-size:95%;}
-.vMessageQuoted [src*='quote2']	{float:right;}
-.vSubMessInfos					{box-shadow:0 6px 6px -6px #999;}
-.vSubMessDescription			{margin-top:10px;}
+[name='title']					{margin-bottom:20px !important;}
+.vEvtOptionsLabel img			{max-height:15px;}
+.vMessageQuoted					{position:relative; display:inline-block; overflow:auto; max-height:100px; margin-bottom:20px; padding:10px; padding-left:40px; border-radius:5px; font-style:italic; font-weight:normal; background-color:<?= Ctrl::$agora->skin=="black"?"#333":"#eee" ?>;}
+.vMessageQuoted [src*='quote']	{position:absolute; top:5px; left:5px; opacity:0.5;}
 </style>
 
-<form action="index.php" method="post" onsubmit="return finalFormControl()" enctype="multipart/form-data">
-
+<form action="index.php" method="post" onsubmit="return mainFormControl()" enctype="multipart/form-data" class="lightboxContent">
+	<!--TITRE RESPONSIVE-->
+	<?php echo $curObj->editRespTitle("FORUM_addMessage"); ?>
+	
 	<!--MESSAGE A CITER?-->
-	<?php if(!empty($messageParent)){ ?>
-	<div class="vMessageQuoted">
-		<img src="app/img/forum/quote2.png">
-		<span class="vSubMessInfos"><?= $messageParent->title ?></span>
-		<div class="vSubMessDescription"><?= $messageParent->description ?></div>
-	</div>
-	<?php } ?>
+	<?php if(!empty($messageParent))  {echo "<div class='vMessageQuoted'>".$messageParent->title."<br>".$messageParent->description."<img src='app/img/forum/quote.png'></div><br>";} ?>
 
 	<!--TITRE & DESCRIPTION (EDITOR)-->
-	<input type="text" name="title" value="<?= $curObj->title ?>" class="editInputText" placeholder="<?= Txt::trad("title") ?>">
+	<input type="text" name="title" value="<?= $curObj->title ?>" class="textBig" placeholder="<?= Txt::trad("title")." ".Txt::trad("optional") ?>">
 	<textarea name="description"><?= $curObj->description ?></textarea>
 
-	<!--"_idMessageParent" & MENU COMMUN-->
-	<input type="hidden" name="_idMessageParent" value="<?= Req::getParam("_idMessageParent") ?>">
-	<?= $curObj->menuEditValidate() ?>
+	<?php
+	////	"_idMessageParent?
+	if(Req::isParam("_idMessageParent"))  {echo "<input type='hidden' name='_idMessageParent' value=\"".Req::getParam("_idMessageParent")."\">";}
+	////	MENU COMMUN
+	echo $curObj->menuEdit();
+	?>
 </form>
